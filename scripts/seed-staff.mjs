@@ -37,18 +37,23 @@ const admin = createClient(url, serviceRoleKey, {
 });
 
 /**
- * matchDisplayName attaches the login to a staff row that is already there.
- * Leave it out to always create a separate demo record, which is what the two
- * new roles do: the real Neha Sharma already belongs to somebody else's login,
- * and taking it over would lock a teammate out of their own account.
+ * Every demo account gets its own app_users row, and none of them is attached
+ * to a record that already exists.
+ *
+ * That is not tidiness, it is a requirement. The policy on app_users matches
+ * id = auth.uid() rather than auth_user_id, so a staff row can only see itself
+ * when its id is the login id. Linking a login onto a row with a different id
+ * produces an account that signs in and then finds nothing.
+ *
+ * Attaching to the real Neha Sharma would also have taken a teammate's account
+ * away from them.
  *
  * locationCode is null for a role that is not posted anywhere.
  */
 const STAFF = [
   {
     email: 'admin@demo.gbpuat.test',
-    displayName: 'Northfield university admin',
-    matchDisplayName: 'Northfield university admin',
+    displayName: 'Demo University Admin',
     role: 'university_admin',
     locationCode: null,
   },
