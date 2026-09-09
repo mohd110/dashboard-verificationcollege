@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { EVENT_LABELS, type CampusEventType } from '@/lib/types';
+import { buttonClass, inputClass } from '@/components/ui';
 
 export type FilterOption = { value: string; label: string };
 
@@ -13,9 +14,6 @@ export type FilterValues = {
   from?: string;
   to?: string;
 };
-
-const selectClass =
-  'w-full rounded-md border border-line bg-surface px-2.5 py-1.5 text-sm focus:border-brand focus:outline-none';
 
 function Select({
   name,
@@ -32,10 +30,10 @@ function Select({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium tracking-wide text-muted uppercase">
+      <span className="mb-1.5 block text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">
         {label}
       </span>
-      <select name={name} defaultValue={value ?? ''} className={selectClass}>
+      <select name={name} defaultValue={value ?? ''} className={inputClass}>
         <option value="">{anyLabel}</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -71,7 +69,7 @@ export function EventFilters({
   const hasFilters = Object.values(values).some(Boolean);
 
   return (
-    <form action={action} className="grid gap-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-4">
+    <form action={action} className="grid gap-4 px-5 py-5 sm:grid-cols-2 lg:grid-cols-4">
       <Select
         name="personId"
         label="Student"
@@ -112,31 +110,25 @@ export function EventFilters({
       ) : null}
 
       <label className="block">
-        <span className="mb-1 block text-xs font-medium tracking-wide text-muted uppercase">
+        <span className="mb-1.5 block text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">
           From
         </span>
-        <input type="date" name="from" defaultValue={values.from ?? ''} className={selectClass} />
+        <input type="date" name="from" defaultValue={values.from ?? ''} className={inputClass} />
       </label>
 
       <label className="block">
-        <span className="mb-1 block text-xs font-medium tracking-wide text-muted uppercase">
+        <span className="mb-1.5 block text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">
           To
         </span>
-        <input type="date" name="to" defaultValue={values.to ?? ''} className={selectClass} />
+        <input type="date" name="to" defaultValue={values.to ?? ''} className={inputClass} />
       </label>
 
       <div className="flex items-end gap-2">
-        <button
-          type="submit"
-          className="rounded-md bg-brand px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
-        >
+        <button type="submit" className={buttonClass.primary}>
           Apply
         </button>
         {hasFilters ? (
-          <Link
-            href={action}
-            className="rounded-md border border-line px-4 py-1.5 text-sm text-muted hover:text-ink"
-          >
+          <Link href={action} className={buttonClass.secondary}>
             Clear
           </Link>
         ) : null}

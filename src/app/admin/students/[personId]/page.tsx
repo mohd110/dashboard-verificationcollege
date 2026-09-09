@@ -1,45 +1,141 @@
-import type { ReactNode } from 'react';
+import { Suspense } from 'react';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { IdCard } from 'lucide-react';
 
+import { ActionForm } from '@/components/action-form';
 import { ActivityTrail } from '@/components/activity-trail';
-import { Card, PageHeading, StatusPill } from '@/components/ui';
+import {
+  Card,
+  DataTable,
+  EmptyState,
+  Fact,
+  LifecycleBadge,
+  PageHeading,
+  Row,
+  SkeletonCard,
+  StatusPill,
+} from '@/components/ui';
 import { listActivityTrail } from '@/lib/events';
 import { formatDate } from '@/lib/format';
+import { REASON_LABELS } from '@/lib/issuance/revoke';
 import { requireAdminSession } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
-import type { CardStatus, CredentialState, PersonStatus } from '@/lib/types';
+import { getStudent, latestCard, listCredentials } from '@/lib/students';
+
+import { issueCard } from '../../cards/actions';
 
 export const metadata = { title: 'Student profile · GBPUAT Smart Identity' };
 
-type StudentProfile = {
-  id: string;
-  student_id: string | null;
-  full_name: string;
-  email: string | null;
-  department: string | null;
-  status: PersonStatus;
-  enrolments: { programme: string | null; status: string; student_number: string | null }[] | null;
-};
+async function IdentityPanel({ personId }: { personId: string }) {
+  const [card, credentials] = await Promise.all([latestCard(personId), listCredentials(personId)]);
+  const current = credentials[0] ?? null;
+  const superseded = credentials.slice(1);
 
-type CardRow = { status: CardStatus; sequence_no: number; issued_at: string | null };
-
-type CredentialRow = {
-  id: string;
-  jti: string;
-  issued_at: string | null;
-  expires_at: string | null;
-  credential_status: { status: CredentialState; changed_at: string; reason_code: string | null }[] | null;
-};
-
-/** Only 'active' is a good credential. Everything else is a reason to stop. */
-const GOOD_CREDENTIAL: CredentialState = 'active';
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div>
-      <dt className="text-xs font-medium tracking-wide text-muted uppercase">{label}</dt>
-      <dd className="mt-1 text-sm text-ink">{children}</dd>
-    </div>
+    <>
+      <Card title="Identity">
+        <dl className="grid gap-4 px-5 py-5">
+          <Fact label="Card">
+            {card ? (
+              <>
+                <LifecycleBadge state={card.status} />
+                <span className="mt-1 block text-xs text-muted">
+                  Card {card.sequenceNo}
+                  {card.issuedAt ? `, issued ${formatDate(card.issuedAt)}` : ''}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted">No card has been made.</span>
+            )}
+          </Fact>
+
+          <Fact label="Credential">
+            {current ? (
+              <>
+                <LifecycleBadge state={current.state} />
+                <span className="mt-1 block text-xs text-muted">
+                  {current.reasonCode
+                    ? `${REASON_LABELS[current.reasonCode as keyof typeof REASON_LABELS] ?? current.reasonCode}, `
+                    : ''}
+                  {current.changedAt ? formatDate(current.changedAt) : ''}
+                </span>
+                <Link
+                  href={`/admin/cards/${current.id}`}
+                  className="mt-1.5 inline-block text-xs font-medium text-brand-mid hover:underline"
+                >
+                  Open the card
+                </Link>
+              </>
+            ) : (
+              <span className="text-muted">No credential has been issued.</span>
+            )}
+          </Fact>
+
+          {current?.expiresAt ? (
+            <Fact label="Expires">{formatDate(current.expiresAt)}</Fact>
+          ) : null}
+        </dl>
+
+        <div className="border-t border-line-soft px-5 py-4">
+          <ActionForm
+            action={issueCard}
+            submitLabel={current ? 'Reissue card' : 'Issue card'}
+            pendingLabel="Signing…"
+            full
+            hidden={{ personId }}
+          />
+          <p className="mt-2 text-xs text-faint">
+            {current
+              ? 'A reissue signs a new credential and increments the card number, so the older card is visibly stale at the gate. It does not block the old one.'
+              : 'Signs an Ed25519 credential and prints a scannable card. Recorded on the activity trail.'}
+          </p>
+        </div>
+      </Card>
+
+      {superseded.length > 0 ? (
+        <Card title={`${superseded.length} earlier ${superseded.length === 1 ? 'card' : 'cards'}`}>
+          <DataTable compact head={['Issued', 'State', '']}>
+            {superseded.map((credential) => (
+              <Row key={credential.id}>
+                <td className="px-5 py-2.5 text-sm whitespace-nowrap">
+                  {credential.issuedAt ? formatDate(credential.issuedAt) : '—'}
+                </td>
+                <td className="px-5 py-2.5">
+                  <LifecycleBadge state={credential.state} />
+                </td>
+                <td className="px-5 py-2.5 text-right">
+                  <Link
+                    href={`/admin/cards/${credential.id}`}
+                    className="text-xs font-medium text-brand-mid hover:underline"
+                  >
+                    Open
+                  </Link>
+                </td>
+              </Row>
+            ))}
+          </DataTable>
+        </Card>
+      ) : null}
+    </>
+  );
+}
+
+async function Trail({ personId }: { personId: string }) {
+  const events = await listActivityTrail(personId);
+
+  return (
+    <Card
+      title="Activity Trail"
+      description={`${events.length} ${events.length === 1 ? 'event' : 'events'}, oldest first`}
+    >
+      {events.length === 0 ? (
+        <EmptyState title="Nothing recorded yet">
+          This student has not been scanned at a gate, entered the library or been issued a card.
+        </EmptyState>
+      ) : (
+        <ActivityTrail events={events} />
+      )}
+    </Card>
   );
 }
 
@@ -51,113 +147,60 @@ export default async function StudentProfilePage({
   await requireAdminSession();
   const { personId } = await params;
 
-  const supabase = await createClient();
-
-  // Cards and credentials belong to the identity subsystem. They are read here
-  // and never written, because issuing and revoking are its job, not this one.
-  const [personResult, cardResult, credentialResult] = await Promise.all([
-    supabase
-      .from('people')
-      .select(
-        'id, student_id, full_name, email, department, status, enrolments ( programme, status, student_number )',
-      )
-      .eq('id', personId)
-      .maybeSingle(),
-    supabase
-      .from('cards')
-      .select('status, sequence_no, issued_at')
-      .eq('person_id', personId)
-      .order('sequence_no', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    supabase
-      .from('credentials')
-      .select('id, jti, issued_at, expires_at, credential_status ( status, changed_at, reason_code )')
-      .eq('person_id', personId)
-      .order('issued_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
-
-  if (!personResult.data) notFound();
-
-  const student = personResult.data as unknown as StudentProfile;
-  const card = cardResult.data as CardRow | null;
-  const credential = credentialResult.data as unknown as CredentialRow | null;
-  const credentialState = credential?.credential_status?.[0] ?? null;
-  const enrolment = student.enrolments?.[0];
-
-  const trail = await listActivityTrail(student.id);
+  // The register read is what decides whether this page exists at all, so it
+  // is awaited here. Cards, credentials and the trail stream in behind it.
+  const student = await getStudent(personId);
+  if (!student) notFound();
 
   return (
     <>
       <PageHeading
-        title={student.full_name}
-        description={`Student ID ${student.student_id ?? 'not assigned'}`}
+        title={student.fullName}
+        description={`Student number ${student.studentNumber ?? 'not assigned'}`}
+        action={
+          <Link
+            href="/admin/cards"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-mid hover:underline"
+          >
+            <IdCard size={15} />
+            All cards
+          </Link>
+        }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[20rem_1fr] lg:items-start">
+      <div className="grid gap-6 lg:grid-cols-[21rem_1fr] lg:items-start">
         <div className="space-y-6">
           <Card title="Registration">
             <dl className="grid gap-4 px-5 py-5">
-              <Field label="Department">{student.department ?? '—'}</Field>
-              <Field label="Programme">{enrolment?.programme ?? '—'}</Field>
-              <Field label="Enrolment">{enrolment?.status ?? '—'}</Field>
-              <Field label="Email">{student.email ?? '—'}</Field>
-              <Field label="Register status">
+              <Fact label="Department">{student.department ?? '—'}</Fact>
+              <Fact label="Programme">{student.programme ?? '—'}</Fact>
+              <Fact label="Email">{student.email ?? '—'}</Fact>
+              <Fact label="Register status">
                 <StatusPill active={student.status === 'active'} />
-              </Field>
+              </Fact>
             </dl>
           </Card>
 
-          <Card title="Identity">
-            <dl className="grid gap-4 px-5 py-5">
-              <Field label="Card status">
-                {card ? (
-                  <>
-                    <span className="font-medium uppercase">{card.status}</span>
-                    <span className="block text-xs text-muted">
-                      Card {card.sequence_no}
-                      {card.issued_at ? `, issued ${formatDate(card.issued_at)}` : ''}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-muted">No card has been made</span>
-                )}
-              </Field>
-
-              <Field label="Credential status">
-                {credentialState ? (
-                  <>
-                    <span
-                      className={`font-semibold uppercase ${
-                        credentialState.status === GOOD_CREDENTIAL ? 'text-ok' : 'text-bad'
-                      }`}
-                    >
-                      {credentialState.status}
-                    </span>
-                    <span className="block text-xs text-muted">
-                      Changed {formatDate(credentialState.changed_at)}
-                      {credentialState.reason_code ? `, ${credentialState.reason_code}` : ''}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-muted">No credential has been issued</span>
-                )}
-              </Field>
-
-              {credential ? (
-                <Field label="Credential expires">
-                  {credential.expires_at ? formatDate(credential.expires_at) : '—'}
-                </Field>
-              ) : null}
-            </dl>
-          </Card>
+          <Suspense
+            fallback={
+              <Card title="Identity">
+                <SkeletonCard lines={3} />
+              </Card>
+            }
+          >
+            <IdentityPanel personId={student.id} />
+          </Suspense>
         </div>
 
-        <Card title={`Activity Trail · ${trail.length} ${trail.length === 1 ? 'event' : 'events'}`}>
-          <ActivityTrail events={trail} />
-        </Card>
+        <Suspense
+          fallback={
+            <Card title="Activity Trail">
+              <SkeletonCard lines={5} />
+            </Card>
+          }
+        >
+          <Trail personId={student.id} />
+        </Suspense>
       </div>
     </>
   );

@@ -81,9 +81,17 @@ export async function createStaffUser(
 
   const authUserId = created.user.id;
 
+  // The staff row's own id has to BE the login id, not merely point at it.
+  //
+  // Policies inherited from the identity subsystem match app_users.id against
+  // auth.uid() rather than against auth_user_id. A row with a generated id
+  // therefore produces an account that signs in successfully and then cannot
+  // read a single student, card or credential. Both columns are set so the two
+  // conventions in this database agree.
   const { data: profile, error: profileError } = await admin
     .from('app_users')
     .insert({
+      id: authUserId,
       university_id: session.universityId,
       display_name: fullName,
       status: 'active',

@@ -59,6 +59,16 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
+/**
+ * Every path this matches costs one call to Supabase before anything renders.
+ *
+ * The exclusions matter for how the application feels. `_next` covers the
+ * prefetches Next fires for every sidebar link, and .well-known covers the
+ * public key endpoint, which has no session by design. Without them a single
+ * page view triggers a round trip for each link on it.
+ */
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|_next/data|favicon.ico|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)',
+  ],
 };

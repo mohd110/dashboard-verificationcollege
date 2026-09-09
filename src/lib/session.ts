@@ -21,6 +21,8 @@ export type StaffSession = {
   status: string;
   universityId: string;
   universityName: string;
+  /** Short tenant code. The first four characters are printed on every card. */
+  universityCode: string;
   role: AppRole;
   /** The gate or library this person is posted to, if any. */
   posting: Posting | null;
@@ -55,8 +57,26 @@ const getAuthUser = cache(async () => {
   return user;
 });
 
+type SessionRow = {
+  id: string;
+  display_name: string;
+  status: string;
+  university_id: string;
+  auth_user_id: string;
+  universities: { legal_name: string; code: string } | null;
+  user_roles: Array<{
+    role: AppRole;
+    location_id: string | null;
+    campus_locations: { id: string; code: string; name: string; type: LocationType } | null;
+  }>;
+};
+
 /**
  * The signed-in staff member.
+ *
+ * One query. The posting used to be a second round trip, which every page in
+ * the application paid for on every navigation; nesting campus_locations under
+ * the role grant gets it in the same request.
  *
  * Null covers two different situations, which matters: nobody is signed in, or
  * somebody is signed in whose login was never linked to an app_users row. The
@@ -71,8 +91,8 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
     .from('app_users')
     .select(
       `id, display_name, status, university_id, auth_user_id,
-       universities ( legal_name ),
-       user_roles ( role, location_id )`,
+       universities ( legal_name, code ),
+       user_roles ( role, location_id, campus_locations ( id, code, name, type ) )`,
     )
     .eq('auth_user_id', user.id)
     .maybeSingle();
@@ -87,39 +107,27 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
 
   if (!data) return null;
 
-  const university = data.universities as unknown as { legal_name: string } | null;
-  const grants = (data.user_roles ?? []) as unknown as Array<{
-    role: AppRole;
-    location_id: string | null;
-  }>;
-
+  const row = data as unknown as SessionRow;
+  const grants = row.user_roles ?? [];
   if (grants.length === 0) return null;
 
-  const role = [...grants]
-    .sort((a, b) => ROLE_PRECEDENCE.indexOf(a.role) - ROLE_PRECEDENCE.indexOf(b.role))[0].role;
+  const role = [...grants].sort(
+    (a, b) => ROLE_PRECEDENCE.indexOf(a.role) - ROLE_PRECEDENCE.indexOf(b.role),
+  )[0].role;
 
-  const posted = grants.find((grant) => grant.location_id);
-
-  let posting: Posting | null = null;
-  if (posted?.location_id) {
-    const { data: location } = await supabase
-      .from('campus_locations')
-      .select('id, code, name, type')
-      .eq('id', posted.location_id)
-      .maybeSingle();
-    posting = (location as Posting | null) ?? null;
-  }
+  const posted = grants.find((grant) => grant.campus_locations);
 
   return {
-    userId: data.id,
-    authUserId: data.auth_user_id,
+    userId: row.id,
+    authUserId: row.auth_user_id,
     email: user.email ?? '',
-    fullName: data.display_name,
-    status: data.status,
-    universityId: data.university_id,
-    universityName: university?.legal_name ?? 'University',
+    fullName: row.display_name,
+    status: row.status,
+    universityId: row.university_id,
+    universityName: row.universities?.legal_name ?? 'University',
+    universityCode: row.universities?.code ?? '',
     role,
-    posting,
+    posting: posted?.campus_locations ?? null,
   };
 });
 

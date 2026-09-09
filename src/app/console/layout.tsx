@@ -1,15 +1,15 @@
 import type { ReactNode } from 'react';
 
-import { TopBar } from '@/components/top-bar';
+import { AppShell } from '@/components/shell/app-shell';
+import { CONSOLE_LINKS } from '@/components/shell/sidebar';
 import { requireStaffSession } from '@/lib/session';
 
 export default async function ConsoleLayout({ children }: { children: ReactNode }) {
   const session = await requireStaffSession();
 
   return (
-    <div className="min-h-screen">
-      <TopBar session={session} />
-      <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
-    </div>
+    <AppShell session={session} links={CONSOLE_LINKS} subtitle="Verification Console">
+      {children}
+    </AppShell>
   );
 }

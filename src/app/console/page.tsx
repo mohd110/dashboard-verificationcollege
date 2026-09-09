@@ -1,13 +1,48 @@
-import { Card, DataTable, EmptyState, Notice, PageHeading, ResultBadge } from '@/components/ui';
+import { Suspense } from 'react';
+
+import {
+  Card,
+  DataTable,
+  EmptyState,
+  Notice,
+  PageHeading,
+  ResultBadge,
+  SkeletonTable,
+} from '@/components/ui';
 import { listCampusEvents } from '@/lib/events';
 import { formatTime } from '@/lib/format';
-import { requireStaffSession } from '@/lib/session';
+import { requireStaffSession, type Posting } from '@/lib/session';
 import { EVENT_LABELS, LOCATION_TYPE_LABELS } from '@/lib/types';
-import { isUsingStandInProvider } from '@/lib/verification/verify';
+import { allowsPrintedNumbers } from '@/lib/verification/verify';
 
 import { ScanPanel } from './scan-panel';
 
 export const metadata = { title: 'Verification Console · GBPUAT Smart Identity' };
+
+async function RecentScans({ posting }: { posting: Posting }) {
+  const recent = await listCampusEvents({ locationId: posting.id, limit: 15 });
+
+  if (recent.length === 0) {
+    return <EmptyState title="Nothing yet">No card has been scanned at this location.</EmptyState>;
+  }
+
+  return (
+    <DataTable compact head={['Time', 'Event', 'Student', 'Result']}>
+      {recent.map((event) => (
+        <tr key={event.id}>
+          <td className="px-5 py-2.5 font-mono text-xs tabular-nums">
+            {formatTime(event.occurredAt)}
+          </td>
+          <td className="px-5 py-2.5 text-sm">{EVENT_LABELS[event.eventType]}</td>
+          <td className="px-5 py-2.5 text-sm">{event.person?.fullName ?? '—'}</td>
+          <td className="px-5 py-2.5">
+            <ResultBadge result={event.result} />
+          </td>
+        </tr>
+      ))}
+    </DataTable>
+  );
+}
 
 export default async function ConsolePage() {
   const session = await requireStaffSession();
@@ -25,7 +60,6 @@ export default async function ConsolePage() {
   }
 
   const posting = session.posting;
-  const recent = await listCampusEvents({ locationId: posting.id, limit: 15 });
 
   return (
     <>
@@ -34,41 +68,25 @@ export default async function ConsolePage() {
         description={`${LOCATION_TYPE_LABELS[posting.type]} · ${posting.name} · operated by ${session.fullName}`}
       />
 
-      {isUsingStandInProvider() ? (
+      {allowsPrintedNumbers() ? (
         <div className="mb-6">
-          <Notice tone="warn" title="Stand-in verification is switched on">
-            Scans are being matched against the student register only. No card signature is being
-            checked, and every event recorded this way says so.
+          <Notice tone="warn" title="Typed student numbers are accepted here">
+            A scanned QR code is checked against the university signature. A number typed by hand is
+            only looked up on the register, so it proves the number exists rather than that the card
+            is genuine. Every event recorded that way says so.
           </Notice>
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_22rem] lg:items-start">
-        <Card title={`Scan · ${posting.name}`}>
-          <div className="px-5 py-5">
-            <ScanPanel locationName={posting.name} />
-          </div>
+      <div className="grid gap-6 lg:grid-cols-[1fr_23rem] lg:items-start">
+        <Card title={`Scan · ${posting.name}`} padded>
+          <ScanPanel locationName={posting.name} />
         </Card>
 
-        <Card title="Your recent scans here">
-          {recent.length === 0 ? (
-            <EmptyState>Nothing scanned at this location yet.</EmptyState>
-          ) : (
-            <DataTable compact head={['Time', 'Event', 'Student', 'Result']}>
-              {recent.map((event) => (
-                <tr key={event.id}>
-                  <td className="px-5 py-2.5 font-mono text-xs tabular-nums">
-                    {formatTime(event.occurredAt)}
-                  </td>
-                  <td className="px-5 py-2.5 text-sm">{EVENT_LABELS[event.eventType]}</td>
-                  <td className="px-5 py-2.5 text-sm">{event.person?.fullName ?? '—'}</td>
-                  <td className="px-5 py-2.5">
-                    <ResultBadge result={event.result} />
-                  </td>
-                </tr>
-              ))}
-            </DataTable>
-          )}
+        <Card title="Recent scans here" description="The last fifteen at this location">
+          <Suspense fallback={<SkeletonTable rows={6} columns={4} />}>
+            <RecentScans posting={posting} />
+          </Suspense>
         </Card>
       </div>
     </>

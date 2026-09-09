@@ -15,7 +15,9 @@ const newLocation = z.object({
     .max(24)
     .regex(/^[A-Za-z0-9-]+$/, 'The code may use letters, numbers and hyphens only.'),
   name: z.string().trim().min(2, 'Give the location a name.').max(80),
-  type: z.enum(['gate', 'library', 'office']),
+  // The live campus_location_type enum. 'office' was offered here and is not
+  // one of its values, so every attempt to add one failed at the database.
+  type: z.enum(['gate', 'library', 'hostel', 'lab', 'general']),
 });
 
 export async function createLocation(

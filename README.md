@@ -26,7 +26,12 @@ that and nothing more:
 0103_record_campus_event.sql       the single write path, with role permissions
 0104_campus_event_integrity.sql    chain and per-record verification
 0105_campus_row_level_security.sql policies for the two tables this side owns
+0106_shared_person_columns.sql     fills people.student_id and people.department
+0107_gate_lookups.sql              narrow reads a guard is allowed to make
 supabase/tests/campus_events_test.sql   run once to prove it works
+
+`RUN_2_paste_this.sql` bundles 0101 to 0104 and `RUN_3_paste_this.sql` bundles
+0106 and 0107, for pasting straight into the Supabase SQL editor.
 ```
 
 Read the header of 0105 before applying it. It closes anonymous read access to
@@ -43,15 +48,35 @@ follows the database, not the sketch:
 |---|---|
 | `people.person_code` | `people.student_id` |
 | `people.department_id` | `people.department`, a text name |
-| `app_users.full_name`, `app_users.id = auth.uid()` | `app_users.display_name`, `app_users.auth_user_id` |
-| `user_roles.location_id` | `user_roles.scope_type` = `location`, `scope_id` |
+| `app_users.full_name` | `app_users.display_name` |
 | `universities.name` | `universities.legal_name` |
 | enum `campus_event_type` | `campus_events.event_type` is text |
 
-A posting is therefore a role grant scoped to a location. The vocabulary for
-event types and results is enforced by `record_campus_event()` rather than by a
-CHECK constraint, because a constraint would reject rows the library subsystem
-may already be writing.
+`app_users` carries **both** `id` and `auth_user_id`, and both must hold the
+login id. Policies inherited from the identity subsystem match `id` against
+`auth.uid()`; the helpers added here match `auth_user_id`. A row where the two
+differ signs in successfully and can then read nothing at all.
+
+A posting is a role grant with a location: `user_roles.location_id`, added by
+0102. The pre-existing `scope_type` and `scope_id` are left alone, because
+widening somebody else's CHECK constraint by guesswork risks dropping a value
+this side cannot see.
+
+### The student number and department
+
+`people.student_id` and `people.department` existed and were NULL for all 150
+students, while the real values sat in `enrolments.student_number` and
+`departments.name`. Both the library app and this one search the empty columns,
+so both found nothing.
+
+Migration 0106 makes those two columns a **maintained projection**: a backfill
+that overwrites nothing, plus triggers on `people` and `enrolments` that keep
+them current. The enrolment stays canonical. Nothing should write to
+`people.student_id` directly.
+
+The reads in `src/lib/students.ts` take the projected column when it has a value
+and fall back to the joined enrolment when it does not, so the dashboard is
+correct both before that migration is applied and after.
 
 ---
 
@@ -70,6 +95,7 @@ then give the demo staff a way to sign in:
 
 ```bash
 npm run seed:staff
+npm run key:generate           # only if no signing key is set yet
 ```
 
 That links logins onto the staff rows that already exist rather than creating
@@ -89,6 +115,19 @@ npm run lint
 npm run typecheck
 npm run build
 ```
+
+---
+
+## Handoffs to the other two repositories
+
+Both are in `docs/`, and both contain changes the other developer has to make:
+
+- [`HANDOFF_FOR_SAIF.md`](docs/HANDOFF_FOR_SAIF.md) — the key rotation, the
+  one-line fix it needs in his issuer, and two bugs in his verification
+  service that would write a credential id into a person column.
+- [`HANDOFF_FOR_TABISH.md`](docs/HANDOFF_FOR_TABISH.md) — why his student
+  lookup found nobody, and how to move his event writes onto
+  `record_campus_event` before row level security stops them.
 
 ---
 
@@ -113,18 +152,37 @@ type VerificationResult = {
 };
 ```
 
-`src/lib/verification/verify.ts` picks a provider from `VERIFICATION_PROVIDER`:
+`src/lib/verification/verify.ts` chooses how to read a scan:
 
-- `none`, the default, reports that verification is not connected. **Nothing is
-  recorded.** A student is never marked rejected because our own service was
-  unavailable.
-- `demo-registry` matches the scanned code against the student register so the
-  demo can be walked end to end. It checks no signature. It refuses to run in
-  production, the console shows a standing warning while it is on, and every
-  event it produces stores `signature_checked: false`.
+- **A compact JWS**, which is what a card's QR code contains. The signature is
+  checked against the published issuer keys, the issuer and expiry are checked,
+  and `credential_status` is read live so a blocked card fails. The
+  cryptography is Saif's, ported unchanged into `src/lib/crypto`.
+- **A student number typed by hand**, which only proves the number is on the
+  register. It checks no signature, the console shows a standing warning, and
+  every event it produces stores `signature_checked: false`. Set
+  `ALLOW_PRINTED_NUMBER_SCAN=false` to require a signature.
 
-To connect the real thing, add a case to `verifyCredential` and point the
-environment variable at it. Nothing else changes.
+A key set that cannot be read comes back `UNVERIFIABLE`, which records nothing.
+That is our failure, not the student's.
+
+### Issuing a card
+
+`/admin/students/<id>` signs an Ed25519 credential, writes `cards`,
+`credentials`, `credential_status` and `credential_events`, and records a
+`CARD_ISSUED` campus event. The printable CR80 card is at
+`/admin/cards/<credentialId>`, where it can also be blocked or reinstated.
+
+The credential profile, codec, QR budget and issuance steps are a port of the
+verification dashboard's own, kept identical on purpose: a card issued by
+either application has to be indistinguishable from one issued by the other.
+`src/lib/__tests__/credential.test.ts` and `signing.test.ts` pin claim order,
+the size budget and the sign-then-verify loop.
+
+The signing key comes from `DEMO_SIGNING_KEY_KID` and
+`DEMO_SIGNING_KEY_PRIVATE_JWK`. `npm run key:generate` creates one, marks the
+previously active key `rotated` rather than `revoked` so existing cards keep
+verifying, and prints the private half once.
 
 ### Books and notifications, owned by Tabish
 

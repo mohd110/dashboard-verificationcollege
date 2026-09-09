@@ -4,28 +4,55 @@
   Institutional palette taken from gbpuat.ac.in, which is blue on white with a
   gold accent. Everything else is neutral grey, so that a status colour always
   means something.
+
+  The scale is deliberately small. Four greys, one blue with three shades, and
+  three status colours. A screen that needs a fifth grey usually needs less on
+  it instead.
 */
 @theme {
-  --color-ink: #101828;
-  --color-muted: #5b6472;
-  --color-line: #e3e7ee;
+  --color-ink: #111827;
+  --color-ink-soft: #374151;
+  --color-muted: #6b7280;
+  --color-faint: #9ca3af;
+  --color-line: #e5e7eb;
+  --color-line-soft: #f3f4f6;
   --color-surface: #ffffff;
-  --color-canvas: #f5f7fa;
+  --color-canvas: #f7f8fa;
 
-  --color-brand: #0b3d7b;
-  --color-brand-dark: #072a56;
-  --color-brand-light: #eaf1fa;
+  --color-brand: #1e3a5f;
+  --color-brand-dark: #0f2440;
+  --color-brand-mid: #2563a8;
+  --color-brand-bright: #3b82f6;
+  --color-brand-light: #eff6ff;
+  --color-brand-line: #dbeafe;
   --color-accent: #b7862b;
 
-  --color-ok: #17724b;
-  --color-ok-light: #e7f4ee;
-  --color-warn: #8a5a00;
-  --color-warn-light: #fdf3e0;
-  --color-bad: #b3261e;
-  --color-bad-light: #fceceb;
+  --color-ok: #15803d;
+  --color-ok-light: #f0fdf4;
+  --color-ok-line: #bbf7d0;
+  --color-warn: #b45309;
+  --color-warn-light: #fffbeb;
+  --color-warn-line: #fde68a;
+  --color-bad: #b91c1c;
+  --color-bad-light: #fef2f2;
+  --color-bad-line: #fecaca;
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  --radius-card: 12px;
+
+  --shadow-card: 0 1px 3px rgba(16, 24, 40, 0.05), 0 1px 2px rgba(16, 24, 40, 0.03);
+  --shadow-raised: 0 4px 12px rgba(16, 24, 40, 0.08), 0 2px 4px rgba(16, 24, 40, 0.04);
+}
+
+:root {
+  --sidebar-width: 244px;
+  --header-height: 60px;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
@@ -33,9 +60,86 @@ body {
   color: var(--color-ink);
 }
 
+/*
+  Skeletons.
+
+  A navigation in this application is a server round trip, and the honest thing
+  to show while it happens is the shape of what is coming rather than a blank
+  page or a spinner. The sweep is slow on purpose: a fast shimmer reads as
+  activity, which would be a lie about how much is left to do.
+*/
+@keyframes skeleton-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-line-soft);
+  border-radius: 6px;
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.85),
+    transparent
+  );
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+  }
+}
+
 /* The scan console is driven by a reader that types and presses enter, so the
    focused field has to be unmistakable from across a room. */
 .scan-field:focus {
-  outline: 3px solid var(--color-brand);
+  outline: 3px solid var(--color-brand-bright);
   outline-offset: 2px;
+}
+
+/*
+  The printable card.
+
+  Laid out at CR80, 85.6 x 54 mm, the size of a bank card, so printing at 100%
+  produces something the right shape. Everything else on the page is dropped.
+*/
+.card-print {
+  width: 85.6mm;
+  height: 54mm;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  .print-sheet {
+    margin: 0;
+    padding: 0;
+  }
+
+  .card-print {
+    box-shadow: none;
+    border: 0.2mm solid #cbd5e1;
+    break-inside: avoid;
+  }
+
+  @page {
+    margin: 12mm;
+  }
 }

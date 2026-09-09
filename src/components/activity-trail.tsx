@@ -29,8 +29,10 @@ export function ActivityTrail({ events }: { events: CampusEvent[] }) {
   return (
     <div className="px-5 py-5">
       {[...days.entries()].map(([day, dayEvents]) => (
-        <section key={day} className="mb-6 last:mb-0">
-          <h3 className="mb-3 text-xs font-semibold tracking-wide text-muted uppercase">{day}</h3>
+        <section key={day} className="mb-7 last:mb-0">
+          <h3 className="mb-3 text-[0.6875rem] font-bold tracking-widest text-faint uppercase">
+            {day}
+          </h3>
 
           <ol className="relative border-l border-line pl-6">
             {dayEvents.map((event) => {
@@ -40,8 +42,8 @@ export function ActivityTrail({ events }: { events: CampusEvent[] }) {
                 <li key={event.id} className="relative mb-5 last:mb-0">
                   <span
                     aria-hidden
-                    className={`absolute -left-[1.9rem] top-1.5 h-2.5 w-2.5 rounded-full ring-4 ring-surface ${
-                      failed ? 'bg-bad' : 'bg-brand'
+                    className={`absolute top-1.5 -left-[1.9rem] h-2.5 w-2.5 rounded-full ring-4 ring-surface ${
+                      failed ? 'bg-bad' : 'bg-brand-mid'
                     }`}
                   />
 
@@ -49,7 +51,7 @@ export function ActivityTrail({ events }: { events: CampusEvent[] }) {
                     <span className="font-mono text-sm tabular-nums text-muted">
                       {formatTime(event.occurredAt)}
                     </span>
-                    <span className="font-medium">{EVENT_LABELS[event.eventType]}</span>
+                    <span className="font-semibold text-ink">{EVENT_LABELS[event.eventType]}</span>
                     <ResultBadge result={event.result} />
                   </div>
 
@@ -59,7 +61,7 @@ export function ActivityTrail({ events }: { events: CampusEvent[] }) {
 
                   <Link
                     href={`/admin/events/${event.id}`}
-                    className="mt-1 inline-block text-xs text-brand hover:underline"
+                    className="mt-1 inline-block text-xs font-medium text-brand-mid hover:underline"
                   >
                     Event details
                   </Link>

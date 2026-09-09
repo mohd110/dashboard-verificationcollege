@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useActionState } from 'react';
 
 import { idleState, type FormAction } from '@/lib/action-state';
+import { buttonClass } from '@/components/ui';
 
 /**
  * A form wired to a server action, with its own pending state and its own
@@ -18,21 +19,26 @@ export function ActionForm({
   hidden,
   children,
   className,
+  full = false,
 }: {
   action: FormAction;
   submitLabel: string;
   pendingLabel?: string;
-  variant?: 'primary' | 'quiet';
+  variant?: 'primary' | 'quiet' | 'danger';
   hidden?: Record<string, string>;
   children?: ReactNode;
   className?: string;
+  /** Stretches the button across the form, for a panel rather than a row. */
+  full?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, idleState);
 
-  const button =
-    variant === 'primary'
-      ? 'rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60'
-      : 'rounded-md border border-line px-3 py-1.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-60';
+  const styles = {
+    primary: buttonClass.primary,
+    danger: buttonClass.danger,
+    quiet:
+      'inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[0.8125rem] font-medium text-ink-soft transition-colors hover:bg-canvas disabled:opacity-60',
+  } as const;
 
   return (
     <form action={formAction} className={className}>
@@ -47,7 +53,7 @@ export function ActionForm({
       <button
         type="submit"
         disabled={pending}
-        className={button}
+        className={`${styles[variant]} ${full ? 'w-full' : ''}`}
       >
         {pending ? (pendingLabel ?? 'Working…') : submitLabel}
       </button>

@@ -1,21 +1,71 @@
+import { Suspense } from 'react';
 import Link from 'next/link';
+import { Search } from 'lucide-react';
 
-import { Card, DataTable, EmptyState, PageHeading, StatusPill } from '@/components/ui';
+import {
+  Card,
+  DataTable,
+  EmptyState,
+  PageHeading,
+  Row,
+  SkeletonTable,
+  StatusPill,
+  buttonClass,
+  inputClass,
+} from '@/components/ui';
 import { sanitiseSearch } from '@/lib/search';
 import { requireAdminSession } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
-import type { PersonStatus } from '@/lib/types';
+import { listStudents } from '@/lib/students';
 
 export const metadata = { title: 'Students · GBPUAT Smart Identity' };
 
-type StudentRow = {
-  id: string;
-  student_id: string | null;
-  full_name: string;
-  department: string | null;
-  status: PersonStatus;
-  enrolments: { programme: string | null }[] | null;
-};
+async function StudentTable({ search }: { search: string }) {
+  const students = await listStudents(search);
+
+  if (students.length === 0) {
+    return (
+      <EmptyState title="Nobody found">
+        {search ? `Nothing on the register matches "${search}".` : 'The register is empty.'}
+      </EmptyState>
+    );
+  }
+
+  return (
+    <DataTable head={['Student', 'Student number', 'Department', 'Programme', 'Status', '']}>
+      {students.map((student) => (
+        <Row key={student.id}>
+          <td className="px-5 py-3">
+            <Link
+              href={`/admin/students/${student.id}`}
+              className="font-medium text-ink hover:text-brand-mid hover:underline"
+            >
+              {student.fullName}
+            </Link>
+            {student.email ? (
+              <span className="block truncate text-xs text-faint">{student.email}</span>
+            ) : null}
+          </td>
+          <td className="px-5 py-3 font-mono text-xs tabular-nums">
+            {student.studentNumber ?? '—'}
+          </td>
+          <td className="px-5 py-3">{student.department ?? '—'}</td>
+          <td className="px-5 py-3">{student.programme ?? '—'}</td>
+          <td className="px-5 py-3">
+            <StatusPill active={student.status === 'active'} />
+          </td>
+          <td className="px-5 py-3 text-right">
+            <Link
+              href={`/admin/students/${student.id}`}
+              className="text-sm font-medium text-brand-mid hover:underline"
+            >
+              Open profile
+            </Link>
+          </td>
+        </Row>
+      ))}
+    </DataTable>
+  );
+}
 
 export default async function StudentsPage({
   searchParams,
@@ -26,76 +76,41 @@ export default async function StudentsPage({
   const { q } = await searchParams;
   const search = sanitiseSearch(q ?? '');
 
-  const supabase = await createClient();
-  let query = supabase
-    .from('people')
-    .select('id, student_id, full_name, department, status, enrolments ( programme )')
-    .eq('role', 'student')
-    .order('full_name')
-    .limit(200);
-
-  if (search) {
-    query = query.or(`full_name.ilike.%${search}%,student_id.ilike.%${search}%`);
-  }
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-
-  const students = (data ?? []) as unknown as StudentRow[];
-
   return (
     <>
-      <PageHeading title="Students" description="The student register for this campus." />
+      <PageHeading
+        title="Students"
+        description="The student register for this campus. Open anyone to issue or block their card."
+      />
 
       <Card
-        title={`${students.length} ${students.length === 1 ? 'student' : 'students'}`}
+        title={search ? `Results for “${search}”` : 'All students'}
         action={
           <form className="flex gap-2">
-            <input
-              name="q"
-              defaultValue={search}
-              placeholder="Name or student ID"
-              aria-label="Search students"
-              className="rounded-md border border-line px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
-            />
-            <button
-              type="submit"
-              className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
-            >
+            <div className="relative">
+              <Search
+                size={15}
+                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint"
+              />
+              <input
+                name="q"
+                defaultValue={search}
+                placeholder="Name or student number"
+                aria-label="Search students"
+                className={`${inputClass} w-56 pl-9`}
+              />
+            </div>
+            <button type="submit" className={buttonClass.secondary}>
               Search
             </button>
           </form>
         }
       >
-        {students.length === 0 ? (
-          <EmptyState>
-            {search ? `Nobody matches "${search}".` : 'The register is empty.'}
-          </EmptyState>
-        ) : (
-          <DataTable head={['Student', 'Student ID', 'Department', 'Programme', 'Status', '']}>
-            {students.map((student) => (
-              <tr key={student.id} className="hover:bg-canvas">
-                <td className="px-5 py-3 font-medium">{student.full_name}</td>
-                <td className="px-5 py-3 font-mono text-xs tabular-nums">
-                  {student.student_id ?? '—'}
-                </td>
-                <td className="px-5 py-3">{student.department ?? '—'}</td>
-                <td className="px-5 py-3">{student.enrolments?.[0]?.programme ?? '—'}</td>
-                <td className="px-5 py-3">
-                  <StatusPill active={student.status === 'active'} />
-                </td>
-                <td className="px-5 py-3 text-right">
-                  <Link
-                    href={`/admin/students/${student.id}`}
-                    className="text-sm text-brand hover:underline"
-                  >
-                    Open profile
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </DataTable>
-        )}
+        {/* Keyed on the search term so a new query shows the skeleton again
+            rather than the previous results greyed out. */}
+        <Suspense key={search} fallback={<SkeletonTable rows={8} columns={6} />}>
+          <StudentTable search={search} />
+        </Suspense>
       </Card>
     </>
   );

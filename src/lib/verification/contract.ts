@@ -29,6 +29,13 @@ export type VerificationResult = {
   provider: string;
   /** False whenever no digital signature was checked. */
   signatureChecked: boolean;
+  /**
+   * The name and number on the card, present only once a signature verified or
+   * a register lookup succeeded. Shown at the gate so the operator can compare
+   * the screen with the face in front of them.
+   */
+  subjectName?: string | null;
+  subjectCode?: string | null;
 };
 
 /** UNVERIFIABLE means nothing was decided, so nothing is written to history. */

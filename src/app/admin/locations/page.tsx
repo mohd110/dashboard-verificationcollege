@@ -1,5 +1,14 @@
 import { ActionForm } from '@/components/action-form';
-import { Card, DataTable, EmptyState, PageHeading, StatusPill } from '@/components/ui';
+import {
+  Card,
+  DataTable,
+  EmptyState,
+  Field,
+  PageHeading,
+  Row,
+  StatusPill,
+  inputClass,
+} from '@/components/ui';
 import { requireAdminSession } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 import { LOCATION_TYPE_LABELS, type LocationType } from '@/lib/types';
@@ -17,9 +26,6 @@ type LocationRow = {
   user_roles: { count: number }[];
 };
 
-const inputClass =
-  'w-full rounded-md border border-line bg-surface px-3 py-2 text-sm focus:border-brand focus:outline-none';
-
 export default async function LocationsPage() {
   await requireAdminSession();
 
@@ -36,13 +42,15 @@ export default async function LocationsPage() {
     <>
       <PageHeading
         title="Locations"
-        description="Gates, libraries and offices where an identity can be presented."
+        description="Gates, libraries and other places where an identity can be presented."
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_20rem] lg:items-start">
+      <div className="grid gap-6 lg:grid-cols-[1fr_21rem] lg:items-start">
         <Card title={`${locations.length} ${locations.length === 1 ? 'location' : 'locations'}`}>
           {locations.length === 0 ? (
-            <EmptyState>No locations yet. Add the first one on the right.</EmptyState>
+            <EmptyState title="No locations yet">
+              Add the first one on the right. A guard cannot be posted anywhere until one exists.
+            </EmptyState>
           ) : (
             <DataTable head={['Location', 'Code', 'Type', 'Staff posted', 'Status', '']}>
               {locations.map((location) => {
@@ -50,7 +58,7 @@ export default async function LocationsPage() {
                 const posted = location.user_roles?.[0]?.count ?? 0;
 
                 return (
-                  <tr key={location.id} className="hover:bg-canvas">
+                  <Row key={location.id}>
                     <td className="px-5 py-3 font-medium">{location.name}</td>
                     <td className="px-5 py-3 font-mono text-xs">{location.code}</td>
                     <td className="px-5 py-3">{LOCATION_TYPE_LABELS[location.type]}</td>
@@ -63,13 +71,10 @@ export default async function LocationsPage() {
                         action={setLocationStatus}
                         variant="quiet"
                         submitLabel={active ? 'Deactivate' : 'Reactivate'}
-                        hidden={{
-                          id: location.id,
-                          status: active ? 'inactive' : 'active',
-                        }}
+                        hidden={{ id: location.id, status: active ? 'inactive' : 'active' }}
                       />
                     </td>
-                  </tr>
+                  </Row>
                 );
               })}
             </DataTable>
@@ -81,42 +86,34 @@ export default async function LocationsPage() {
             action={createLocation}
             submitLabel="Add location"
             pendingLabel="Adding…"
+            full
             className="space-y-4 px-5 py-5"
           >
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium">
-                Name
-              </label>
-              <input id="name" name="name" required placeholder="Gate 3" className={`mt-1 ${inputClass}`} />
-            </div>
+            <Field label="Name" htmlFor="name">
+              <input id="name" name="name" required placeholder="Gate 3" className={inputClass} />
+            </Field>
 
-            <div>
-              <label htmlFor="code" className="block text-sm font-medium">
-                Code
-              </label>
-              <input
-                id="code"
-                name="code"
-                required
-                placeholder="GATE-3"
-                className={`mt-1 ${inputClass}`}
-              />
-              <p className="mt-1 text-xs text-muted">Letters, numbers and hyphens. Unique on campus.</p>
-            </div>
+            <Field
+              label="Code"
+              htmlFor="code"
+              hint="Letters, numbers and hyphens. Unique on campus."
+            >
+              <input id="code" name="code" required placeholder="GATE-3" className={inputClass} />
+            </Field>
 
-            <div>
-              <label htmlFor="type" className="block text-sm font-medium">
-                Type
-              </label>
-              <select id="type" name="type" defaultValue="gate" className={`mt-1 ${inputClass}`}>
-                <option value="gate">Gate</option>
-                <option value="library">Library</option>
-                <option value="office">Office</option>
+            <Field
+              label="Type"
+              htmlFor="type"
+              hint="A gate records identity verifications. A library records entries."
+            >
+              <select id="type" name="type" defaultValue="gate" className={inputClass}>
+                {(Object.keys(LOCATION_TYPE_LABELS) as LocationType[]).map((type) => (
+                  <option key={type} value={type}>
+                    {LOCATION_TYPE_LABELS[type]}
+                  </option>
+                ))}
               </select>
-              <p className="mt-1 text-xs text-muted">
-                A gate records identity verifications. A library records entries.
-              </p>
-            </div>
+            </Field>
           </ActionForm>
         </Card>
       </div>
