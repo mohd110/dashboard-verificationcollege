@@ -16,6 +16,10 @@
 -- library subsystem writes to this table through its own functions. Those keep
 -- working and their rows get chained too.
 
+-- sha256 comes from pgcrypto. A no-op where it is already installed, which on
+-- a Supabase project usually means the extensions schema.
+create extension if not exists pgcrypto;
+
 -- ---------------------------------------------------------------------------
 -- Chain position.
 -- ---------------------------------------------------------------------------
