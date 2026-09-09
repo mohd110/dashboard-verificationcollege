@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Generated helper, not part of the migration set.
+RUN_2_paste_this.sql

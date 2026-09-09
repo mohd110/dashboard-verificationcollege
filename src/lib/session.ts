@@ -67,7 +67,7 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
   if (!user) return null;
 
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('app_users')
     .select(
       `id, display_name, status, university_id, auth_user_id,
@@ -76,6 +76,14 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
     )
     .eq('auth_user_id', user.id)
     .maybeSingle();
+
+  // A failed query is not the same as an account with no access. Swallowing
+  // one and calling it "no access" sends people hunting for a permissions
+  // problem when the real answer is a missing column or an unapplied
+  // migration, so the database's own message is allowed through.
+  if (error) {
+    throw new Error(`Could not load your staff record: ${error.message}`);
+  }
 
   if (!data) return null;
 
