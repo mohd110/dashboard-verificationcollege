@@ -4,16 +4,17 @@ import { Card, DataTable, EmptyState, PageHeading, StatusPill } from '@/componen
 import { sanitiseSearch } from '@/lib/search';
 import { requireAdminSession } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
+import type { PersonStatus } from '@/lib/types';
 
 export const metadata = { title: 'Students · GBPUAT Smart Identity' };
 
 type StudentRow = {
   id: string;
-  person_code: string;
+  student_id: string | null;
   full_name: string;
-  status: 'active' | 'inactive';
-  departments: { name: string } | null;
-  enrolments: { programme: string; academic_year: string }[] | null;
+  department: string | null;
+  status: PersonStatus;
+  enrolments: { programme: string | null }[] | null;
 };
 
 export default async function StudentsPage({
@@ -28,13 +29,13 @@ export default async function StudentsPage({
   const supabase = await createClient();
   let query = supabase
     .from('people')
-    .select('id, person_code, full_name, status, departments ( name ), enrolments ( programme, academic_year )')
-    .eq('person_type', 'student')
+    .select('id, student_id, full_name, department, status, enrolments ( programme )')
+    .eq('role', 'student')
     .order('full_name')
     .limit(200);
 
   if (search) {
-    query = query.or(`full_name.ilike.%${search}%,person_code.ilike.%${search}%`);
+    query = query.or(`full_name.ilike.%${search}%,student_id.ilike.%${search}%`);
   }
 
   const { data, error } = await query;
@@ -75,8 +76,10 @@ export default async function StudentsPage({
             {students.map((student) => (
               <tr key={student.id} className="hover:bg-canvas">
                 <td className="px-5 py-3 font-medium">{student.full_name}</td>
-                <td className="px-5 py-3 font-mono text-xs tabular-nums">{student.person_code}</td>
-                <td className="px-5 py-3">{student.departments?.name ?? '—'}</td>
+                <td className="px-5 py-3 font-mono text-xs tabular-nums">
+                  {student.student_id ?? '—'}
+                </td>
+                <td className="px-5 py-3">{student.department ?? '—'}</td>
                 <td className="px-5 py-3">{student.enrolments?.[0]?.programme ?? '—'}</td>
                 <td className="px-5 py-3">
                   <StatusPill active={student.status === 'active'} />

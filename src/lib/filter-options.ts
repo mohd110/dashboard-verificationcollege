@@ -12,17 +12,17 @@ export async function loadFilterOptions(): Promise<{
   const [people, locations, staff] = await Promise.all([
     supabase
       .from('people')
-      .select('id, full_name, person_code')
-      .eq('person_type', 'student')
+      .select('id, full_name, student_id')
+      .eq('role', 'student')
       .order('full_name'),
     supabase.from('campus_locations').select('id, name').order('name'),
-    supabase.from('app_users').select('id, full_name').order('full_name'),
+    supabase.from('app_users').select('id, display_name').order('display_name'),
   ]);
 
   return {
     students: (people.data ?? []).map((person) => ({
       value: person.id,
-      label: `${person.full_name} · ${person.person_code}`,
+      label: `${person.full_name} · ${person.student_id}`,
     })),
     locations: (locations.data ?? []).map((location) => ({
       value: location.id,
@@ -30,7 +30,7 @@ export async function loadFilterOptions(): Promise<{
     })),
     actors: (staff.data ?? []).map((member) => ({
       value: member.id,
-      label: member.full_name,
+      label: member.display_name,
     })),
   };
 }

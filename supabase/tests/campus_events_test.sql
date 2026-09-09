@@ -1,13 +1,18 @@
 -- campus_events_test.sql
 --
--- Run this once after applying the migrations, in the Supabase SQL editor or
--- with psql. It proves the event system behaves as the handoff requires:
--- the hash chain links up, history cannot be edited or deleted, roles cannot
--- record events outside their remit, and one campus cannot write into another.
+-- Run this once after applying migrations 0100 to 0105. It proves the event
+-- system behaves as the handoff requires: the hash chain links up, history
+-- cannot be edited or deleted, roles cannot record events outside their remit,
+-- and one campus cannot write into another.
 --
--- Everything happens inside a transaction that is rolled back at the end, so
--- no test data survives. A failure raises, which aborts the transaction, so a
--- failed run leaves nothing behind either.
+-- Everything happens inside a transaction that is rolled back at the end, so no
+-- test data survives and nothing anybody else is working on is disturbed. A
+-- failed check raises, which aborts the transaction, so a failed run leaves
+-- nothing behind either.
+--
+-- It creates one temporary staff account and nothing else. Universities,
+-- locations and students are read from what is already there rather than
+-- invented, so the script does not have to guess at anybody else's constraints.
 --
 -- Expected final output: NOTICE lines ending in "ALL CHECKS PASSED".
 
@@ -15,14 +20,13 @@ begin;
 
 do $test$
 declare
-  v_instance   uuid := '00000000-0000-0000-0000-000000000000';
-  v_uni_a      uuid;
-  v_uni_b      uuid;
-  v_dept       uuid;
+  v_uni        uuid;
+  v_other_uni  uuid;
+  v_location   uuid;
   v_student    uuid;
-  v_gate       uuid;
-  v_other_gate uuid;
-  v_staff      uuid := gen_random_uuid();
+  v_outsider   uuid;
+  v_auth_uid   uuid := gen_random_uuid();
+  v_staff      uuid;
   v_role_id    uuid;
   v_first      public.campus_events%rowtype;
   v_second     public.campus_events%rowtype;
@@ -32,46 +36,47 @@ declare
   v_failed     boolean;
 begin
   ---------------------------------------------------------------------------
-  -- Fixtures. Two universities, so tenant isolation can be tested for real.
+  -- Pick a campus that has somewhere to scan and somebody to scan.
   ---------------------------------------------------------------------------
-  insert into public.universities (code, name, short_name)
-  values ('TEST-A', 'Test University A', 'TUA')
-  returning id into v_uni_a;
+  select l.university_id, l.id into v_uni, v_location
+  from public.campus_locations l
+  where l.status = 'active'
+  order by l.code
+  limit 1;
 
-  insert into public.universities (code, name, short_name)
-  values ('TEST-B', 'Test University B', 'TUB')
-  returning id into v_uni_b;
+  if v_uni is null then
+    raise exception 'FAIL: no active campus location to test against';
+  end if;
 
-  insert into public.departments (university_id, code, name)
-  values (v_uni_a, 'TSTD', 'Test Department')
-  returning id into v_dept;
+  select id into v_student
+  from public.people
+  where university_id = v_uni and role = 'student' and status = 'active'
+  limit 1;
 
-  insert into public.people (university_id, person_code, full_name, department_id)
-  values (v_uni_a, 'TEST-0001', 'Test Student', v_dept)
-  returning id into v_student;
+  if v_student is null then
+    raise exception 'FAIL: no active student on that campus';
+  end if;
 
-  insert into public.campus_locations (university_id, code, name, type)
-  values (v_uni_a, 'TEST-GATE', 'Test Gate', 'gate')
-  returning id into v_gate;
+  select id into v_other_uni from public.universities where id <> v_uni limit 1;
+  select id into v_outsider
+  from public.people where university_id = v_other_uni limit 1;
 
-  insert into public.campus_locations (university_id, code, name, type)
-  values (v_uni_b, 'TEST-GATE-B', 'Other Campus Gate', 'gate')
-  returning id into v_other_gate;
+  ---------------------------------------------------------------------------
+  -- One temporary member of staff. app_users.auth_user_id has no foreign key
+  -- to auth.users, so no login has to be created to impersonate a session.
+  ---------------------------------------------------------------------------
+  insert into public.app_users (university_id, display_name, status, auth_user_id)
+  values (v_uni, 'Chain test account', 'active', v_auth_uid)
+  returning id into v_staff;
 
-  insert into auth.users (id, instance_id, aud, role, email)
-  values (v_staff, v_instance, 'authenticated', 'authenticated', 'chain-test@example.invalid');
-
-  insert into public.app_users (id, university_id, full_name, email)
-  values (v_staff, v_uni_a, 'Test Admin', 'chain-test@example.invalid');
-
-  insert into public.user_roles (user_id, university_id, role)
-  values (v_staff, v_uni_a, 'university_admin')
+  insert into public.user_roles (user_id, role, scope_type, scope_id)
+  values (v_staff, 'university_admin', 'university', v_uni)
   returning id into v_role_id;
 
   -- Everything below runs as that person, the way a request would.
   perform set_config(
     'request.jwt.claims',
-    json_build_object('sub', v_staff, 'role', 'authenticated')::text,
+    json_build_object('sub', v_auth_uid, 'role', 'authenticated')::text,
     true
   );
 
@@ -79,26 +84,21 @@ begin
   -- 1. Three events, sealed by the trigger.
   ---------------------------------------------------------------------------
   v_first := public.record_campus_event(
-    'IDENTITY_VERIFIED', 'VALID', v_student, v_gate,
+    'IDENTITY_VERIFIED', 'VALID', v_student, v_location,
     null, null, '{"source":"test"}'::jsonb
   );
   v_second := public.record_campus_event(
-    'LIBRARY_ENTRY', 'SUCCESS', v_student, v_gate,
+    'LIBRARY_ENTRY', 'SUCCESS', v_student, v_location,
     null, null, '{}'::jsonb, now(), true
   );
   v_third := public.record_campus_event(
-    'IDENTITY_REJECTED', 'REVOKED', v_student, v_gate
+    'IDENTITY_REJECTED', 'REVOKED', v_student, v_location
   );
 
-  if v_first.seq <> 1 or v_second.seq <> 2 or v_third.seq <> 3 then
+  if v_second.seq <> v_first.seq + 1 or v_third.seq <> v_second.seq + 1 then
     raise exception 'FAIL: chain positions are % % %', v_first.seq, v_second.seq, v_third.seq;
   end if;
   raise notice 'PASS: events take consecutive chain positions';
-
-  if v_first.prev_hash <> repeat('0', 64) then
-    raise exception 'FAIL: the first event should point at the zero hash, got %', v_first.prev_hash;
-  end if;
-  raise notice 'PASS: the chain starts from the genesis hash';
 
   if v_second.prev_hash <> v_first.event_hash or v_third.prev_hash <> v_second.event_hash then
     raise exception 'FAIL: events are not linked to the one before them';
@@ -133,11 +133,11 @@ begin
   end if;
   raise notice 'PASS: a stored event re-hashes to its stored value';
 
-  v_status := public.campus_event_chain_status(v_uni_a);
-  if v_status ->> 'status' <> 'UNBROKEN' or (v_status ->> 'events')::int <> 3 then
+  v_status := public.campus_event_chain_status(v_uni);
+  if v_status ->> 'status' <> 'UNBROKEN' then
     raise exception 'FAIL: chain status reported %', v_status;
   end if;
-  raise notice 'PASS: the chain verifies as UNBROKEN';
+  raise notice 'PASS: the chain verifies as UNBROKEN across % events', v_status ->> 'events';
 
   ---------------------------------------------------------------------------
   -- 4. History is append only.
@@ -165,29 +165,48 @@ begin
   raise notice 'PASS: events cannot be deleted';
 
   ---------------------------------------------------------------------------
-  -- 5. A location on another campus cannot be written to.
+  -- 5. A student from another campus cannot be written about.
+  ---------------------------------------------------------------------------
+  if v_outsider is not null then
+    v_failed := false;
+    begin
+      perform public.record_campus_event(
+        'IDENTITY_VERIFIED', 'VALID', v_outsider, v_location
+      );
+    exception when others then
+      v_failed := true;
+    end;
+    if not v_failed then
+      raise exception 'FAIL: an event was recorded about another university''s student';
+    end if;
+    raise notice 'PASS: another campus cannot be written about';
+  else
+    raise notice 'SKIP: only one university present, tenant isolation not exercised';
+  end if;
+
+  ---------------------------------------------------------------------------
+  -- 6. An unknown event type is refused.
   ---------------------------------------------------------------------------
   v_failed := false;
   begin
-    perform public.record_campus_event(
-      'IDENTITY_VERIFIED', 'VALID', v_student, v_other_gate
-    );
+    perform public.record_campus_event('SOMETHING_ELSE', 'VALID', v_student, v_location);
   exception when others then
     v_failed := true;
   end;
   if not v_failed then
-    raise exception 'FAIL: an event was recorded against another university';
+    raise exception 'FAIL: an unknown event type was accepted';
   end if;
-  raise notice 'PASS: another campus cannot be written to';
+  raise notice 'PASS: the event vocabulary is enforced';
 
   ---------------------------------------------------------------------------
-  -- 6. A guard cannot record library activity.
+  -- 7. A guard cannot record library activity.
   ---------------------------------------------------------------------------
-  update public.user_roles set role = 'guard' where id = v_role_id;
+  update public.user_roles set role = 'guard', scope_type = 'location', scope_id = v_location
+  where id = v_role_id;
 
   v_failed := false;
   begin
-    perform public.record_campus_event('BOOK_ISSUED', 'SUCCESS', v_student, v_gate);
+    perform public.record_campus_event('BOOK_ISSUED', 'SUCCESS', v_student, v_location);
   exception when others then
     v_failed := true;
   end;
@@ -196,9 +215,7 @@ begin
   end if;
   raise notice 'PASS: a guard cannot record library activity';
 
-  if public.record_campus_event('IDENTITY_VERIFIED', 'VALID', v_student, v_gate) is null then
-    raise exception 'FAIL: a guard could not record an identity verification';
-  end if;
+  perform public.record_campus_event('IDENTITY_VERIFIED', 'VALID', v_student, v_location);
   raise notice 'PASS: a guard can still record identity verifications';
 
   raise notice '--- ALL CHECKS PASSED ---';

@@ -64,8 +64,8 @@ export type CampusEvent = {
 const EVENT_SELECT = `
   id, seq, event_type, result, occurred_at, actor_role, entity_type, entity_id,
   metadata, prev_hash, event_hash,
-  people ( id, full_name, person_code ),
-  app_users ( id, full_name ),
+  people ( id, full_name, student_id ),
+  app_users ( id, display_name ),
   campus_locations ( id, name, code, type )
 `;
 
@@ -81,8 +81,8 @@ type EventRow = {
   metadata: Record<string, unknown> | null;
   prev_hash: string;
   event_hash: string;
-  people: { id: string; full_name: string; person_code: string } | null;
-  app_users: { id: string; full_name: string } | null;
+  people: { id: string; full_name: string; student_id: string } | null;
+  app_users: { id: string; display_name: string } | null;
   campus_locations: { id: string; name: string; code: string; type: LocationType } | null;
 };
 
@@ -100,9 +100,9 @@ function toCampusEvent(row: EventRow): CampusEvent {
     prevHash: row.prev_hash,
     eventHash: row.event_hash,
     person: row.people
-      ? { id: row.people.id, fullName: row.people.full_name, personCode: row.people.person_code }
+      ? { id: row.people.id, fullName: row.people.full_name, personCode: row.people.student_id }
       : null,
-    actor: row.app_users ? { id: row.app_users.id, fullName: row.app_users.full_name } : null,
+    actor: row.app_users ? { id: row.app_users.id, fullName: row.app_users.display_name } : null,
     location: row.campus_locations,
   };
 }

@@ -64,7 +64,7 @@ async function verifyAgainstRegistry(payload: string): Promise<VerificationResul
   const { data } = await supabase
     .from('people')
     .select('id, status')
-    .eq('person_code', code)
+    .eq('student_id', code)
     .maybeSingle();
 
   const verifiedAt = new Date().toISOString();

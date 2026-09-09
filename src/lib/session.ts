@@ -2,7 +2,7 @@ import { cache } from 'react';
 import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
-import type { AppRole, LocationType, RecordStatus } from '@/lib/types';
+import { LOCATION_SCOPE, type AppRole, type LocationType } from '@/lib/types';
 
 export type Posting = {
   id: string;
@@ -12,10 +12,13 @@ export type Posting = {
 };
 
 export type StaffSession = {
+  /** app_users.id, which is what campus_events.actor_id points at. */
   userId: string;
+  /** auth.users.id, which is what the session cookie carries. */
+  authUserId: string;
   email: string;
   fullName: string;
-  status: RecordStatus;
+  status: string;
   universityId: string;
   universityName: string;
   role: AppRole;
@@ -23,7 +26,25 @@ export type StaffSession = {
   posting: Posting | null;
 };
 
-const ADMIN_ROLES: AppRole[] = ['super_admin', 'university_admin'];
+const ADMIN_ROLES: AppRole[] = ['platform_admin', 'university_admin'];
+
+/**
+ * Order of precedence when an account holds more than one role. Kept in step
+ * with current_user_role() in migration 0102, so the interface and the
+ * database never disagree about who somebody is.
+ */
+const ROLE_PRECEDENCE: AppRole[] = [
+  'platform_admin',
+  'university_admin',
+  'registrar',
+  'department_admin',
+  'card_operator',
+  'revocation_officer',
+  'librarian',
+  'guard',
+  'verifier',
+  'auditor',
+];
 
 /** Cached for the request, so a layout and its page share one round trip. */
 const getAuthUser = cache(async () => {
@@ -38,7 +59,7 @@ const getAuthUser = cache(async () => {
  * The signed-in staff member.
  *
  * Null covers two different situations, which matters: nobody is signed in, or
- * somebody is signed in whose login was never linked to a staff record. The
+ * somebody is signed in whose login was never linked to an app_users row. The
  * guards below tell them apart.
  */
 export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
@@ -49,35 +70,54 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
   const { data } = await supabase
     .from('app_users')
     .select(
-      `id, email, full_name, status, university_id,
-       universities ( name ),
-       user_roles ( role, campus_locations ( id, code, name, type ) )`,
+      `id, display_name, status, university_id, auth_user_id,
+       universities ( legal_name ),
+       user_roles ( role, scope_type, scope_id )`,
     )
-    .eq('id', user.id)
+    .eq('auth_user_id', user.id)
     .maybeSingle();
 
   if (!data) return null;
 
-  const university = data.universities as unknown as { name: string } | null;
+  const university = data.universities as unknown as { legal_name: string } | null;
   const grants = (data.user_roles ?? []) as unknown as Array<{
     role: AppRole;
-    campus_locations: Posting | null;
+    scope_type: string | null;
+    scope_id: string | null;
   }>;
 
-  // A demo account holds one role. If that ever stops being true, the database
-  // resolves the same way through current_user_role().
-  const grant = grants[0];
-  if (!grant) return null;
+  if (grants.length === 0) return null;
+
+  const role = [...grants]
+    .sort((a, b) => ROLE_PRECEDENCE.indexOf(a.role) - ROLE_PRECEDENCE.indexOf(b.role))[0].role;
+
+  // A posting is a role row scoped to a location. It is fetched separately
+  // because user_roles.scope_id has no foreign key to campus_locations, so
+  // PostgREST cannot embed it.
+  const scopedToLocation = grants.find(
+    (grant) => grant.scope_type === LOCATION_SCOPE && grant.scope_id,
+  );
+
+  let posting: Posting | null = null;
+  if (scopedToLocation?.scope_id) {
+    const { data: location } = await supabase
+      .from('campus_locations')
+      .select('id, code, name, type')
+      .eq('id', scopedToLocation.scope_id)
+      .maybeSingle();
+    posting = (location as Posting | null) ?? null;
+  }
 
   return {
     userId: data.id,
-    email: data.email,
-    fullName: data.full_name,
+    authUserId: data.auth_user_id,
+    email: user.email ?? '',
+    fullName: data.display_name,
     status: data.status,
     universityId: data.university_id,
-    universityName: university?.name ?? 'University',
-    role: grant.role,
-    posting: grant.campus_locations ?? null,
+    universityName: university?.legal_name ?? 'University',
+    role,
+    posting,
   };
 });
 
@@ -94,8 +134,8 @@ export function homePathFor(session: StaffSession): string {
  * Guards a page.
  *
  * Somebody with a login but no staff record goes to /no-access rather than to
- * /login: the middleware sends a signed-in visitor away from /login, so the two
- * would otherwise bounce off each other for ever.
+ * /login: the middleware sends a signed-in visitor away from /login, so the
+ * two would otherwise bounce off each other for ever.
  */
 export async function requireStaffSession(): Promise<StaffSession> {
   const session = await getStaffSession();

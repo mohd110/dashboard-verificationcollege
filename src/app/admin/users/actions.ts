@@ -7,7 +7,7 @@ import type { ActionState } from '@/lib/action-state';
 import { assertAdminForAction } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
-import { ASSIGNABLE_ROLES, POSTED_ROLES } from '@/lib/types';
+import { ASSIGNABLE_ROLES, LOCATION_SCOPE, POSTED_ROLES } from '@/lib/types';
 
 const newUser = z.object({
   fullName: z.string().trim().min(2, 'Enter the full name.').max(80),
@@ -72,38 +72,43 @@ export async function createStaffUser(
   if (authError || !created.user) {
     const taken = /already been registered|already exists/i.test(authError?.message ?? '');
     return {
-      error: taken ? 'Somebody already signs in with that address.' : 'The login could not be created.',
+      error: taken
+        ? 'Somebody already signs in with that address.'
+        : 'The login could not be created.',
       message: null,
     };
   }
 
-  const userId = created.user.id;
+  const authUserId = created.user.id;
 
-  const { error: profileError } = await admin.from('app_users').insert({
-    id: userId,
-    university_id: session.universityId,
-    full_name: fullName,
-    email,
-    status: 'active',
-  });
+  const { data: profile, error: profileError } = await admin
+    .from('app_users')
+    .insert({
+      university_id: session.universityId,
+      display_name: fullName,
+      status: 'active',
+      auth_user_id: authUserId,
+    })
+    .select('id')
+    .single();
 
-  if (profileError) {
-    // Leaving a login with no profile behind would let somebody sign in to
-    // nothing, so the half-made account is removed.
-    await admin.auth.admin.deleteUser(userId);
+  if (profileError || !profile) {
+    // Leaving a login with no staff record behind would let somebody sign in
+    // to nothing, so the half-made account is removed.
+    await admin.auth.admin.deleteUser(authUserId);
     return { error: 'The staff record could not be saved.', message: null };
   }
 
   const { error: roleError } = await admin.from('user_roles').insert({
-    user_id: userId,
-    university_id: session.universityId,
+    user_id: profile.id,
     role,
-    location_id: locationId,
+    scope_type: locationId ? LOCATION_SCOPE : 'university',
+    scope_id: locationId ?? session.universityId,
   });
 
   if (roleError) {
-    await admin.from('app_users').delete().eq('id', userId);
-    await admin.auth.admin.deleteUser(userId);
+    await admin.from('app_users').delete().eq('id', profile.id);
+    await admin.auth.admin.deleteUser(authUserId);
     return { error: 'The role could not be granted.', message: null };
   }
 
@@ -139,7 +144,8 @@ export async function setUserStatus(
   const { error } = await supabase
     .from('app_users')
     .update({ status: parsed.data.status })
-    .eq('id', parsed.data.id);
+    .eq('id', parsed.data.id)
+    .eq('university_id', session.universityId);
 
   if (error) return { error: error.message, message: null };
 
@@ -151,8 +157,7 @@ export async function setUserStatus(
 }
 
 const postingChange = z.object({
-  userId: z.uuid(),
-  role: z.enum(ASSIGNABLE_ROLES),
+  roleId: z.uuid(),
   locationId: z.union([z.uuid(), z.literal('')]),
 });
 
@@ -161,11 +166,10 @@ export async function setUserPosting(
   _state: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  await assertAdminForAction();
+  const session = await assertAdminForAction();
 
   const parsed = postingChange.safeParse({
-    userId: formData.get('userId'),
-    role: formData.get('role'),
+    roleId: formData.get('roleId'),
     locationId: formData.get('locationId') ?? '',
   });
 
@@ -174,17 +178,36 @@ export async function setUserPosting(
   }
 
   const locationId = parsed.data.locationId || null;
+  const supabase = await createClient();
 
-  if ((POSTED_ROLES as readonly string[]).includes(parsed.data.role) && !locationId) {
+  const { data: grant } = await supabase
+    .from('user_roles')
+    .select('id, role')
+    .eq('id', parsed.data.roleId)
+    .maybeSingle();
+
+  if (!grant) return { error: 'That role grant no longer exists.', message: null };
+
+  if ((POSTED_ROLES as readonly string[]).includes(grant.role) && !locationId) {
     return { error: 'This role has to be posted somewhere.', message: null };
   }
 
-  const supabase = await createClient();
+  if (locationId) {
+    const { data: location } = await supabase
+      .from('campus_locations')
+      .select('id')
+      .eq('id', locationId)
+      .maybeSingle();
+    if (!location) return { error: 'That location is not on this campus.', message: null };
+  }
+
   const { error } = await supabase
     .from('user_roles')
-    .update({ location_id: locationId })
-    .eq('user_id', parsed.data.userId)
-    .eq('role', parsed.data.role);
+    .update({
+      scope_type: locationId ? LOCATION_SCOPE : 'university',
+      scope_id: locationId ?? session.universityId,
+    })
+    .eq('id', parsed.data.roleId);
 
   if (error) return { error: error.message, message: null };
 

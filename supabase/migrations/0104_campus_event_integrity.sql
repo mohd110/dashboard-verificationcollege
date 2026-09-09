@@ -1,4 +1,4 @@
--- 0006_event_integrity.sql
+-- 0104_campus_event_integrity.sql
 --
 -- OWNER: Mammu.
 --
@@ -10,16 +10,16 @@
 -- Row-by-row check for one university.
 --
 -- SECURITY DEFINER, because a broken chain has to be detectable even where a
--- policy would hide rows: an attacker who could hide their own row from the
--- verifier could hide the break as well. The tenant and role checks below are
--- what keep that safe.
+-- policy would hide rows: somebody who could hide their own row from the
+-- verifier could hide the break along with it. The two checks below are what
+-- keep that safe.
 -- ---------------------------------------------------------------------------
 create or replace function public.verify_campus_event_chain(p_university_id uuid)
 returns table (
   seq           bigint,
   event_id      uuid,
   occurred_at   timestamptz,
-  event_type    public.campus_event_type,
+  event_type    text,
   prev_hash_ok  boolean,
   event_hash_ok boolean
 )
@@ -72,9 +72,9 @@ security definer
 set search_path = public, pg_temp
 as $fn$
 declare
-  v_total      bigint;
-  v_first_bad  bigint;
-  v_head_hash  text;
+  v_total     bigint;
+  v_first_bad bigint;
+  v_head_hash text;
 begin
   if not public.current_user_is_admin() then
     raise exception 'only an administrator may verify the event chain';

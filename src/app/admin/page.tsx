@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 import { EventTable } from '@/components/event-table';
-import { Card, Notice, PageHeading, StatTile } from '@/components/ui';
+import { Card, PageHeading, StatTile } from '@/components/ui';
 import { listCampusEvents } from '@/lib/events';
 import { campusToday } from '@/lib/format';
 import { requireAdminSession } from '@/lib/session';
@@ -16,25 +16,22 @@ export default async function AdminDashboard() {
   const startOfToday = `${today}T00:00:00`;
 
   // Counts come back as headers rather than rows, so nothing is fetched twice.
-  const [students, locations, verificationsToday, eventsToday, recent] = await Promise.all([
+  const [students, activeCards, verificationsToday, libraryTransactions, recent] = await Promise.all([
     supabase
       .from('people')
       .select('id', { count: 'exact', head: true })
-      .eq('person_type', 'student')
+      .eq('role', 'student')
       .eq('status', 'active'),
     supabase
-      .from('campus_locations')
+      .from('cards')
       .select('id', { count: 'exact', head: true })
-      .eq('status', 'active'),
+      .in('status', ['issued', 'collected']),
     supabase
       .from('campus_events')
       .select('id', { count: 'exact', head: true })
       .in('event_type', ['IDENTITY_VERIFIED', 'IDENTITY_REJECTED'])
       .gte('occurred_at', startOfToday),
-    supabase
-      .from('campus_events')
-      .select('id', { count: 'exact', head: true })
-      .gte('occurred_at', startOfToday),
+    supabase.from('book_transactions').select('id', { count: 'exact', head: true }),
     listCampusEvents({ limit: 10 }),
   ]);
 
@@ -47,24 +44,21 @@ export default async function AdminDashboard() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Students" value={students.count ?? 0} note="Active on the register" />
-        <StatTile label="Active Locations" value={locations.count ?? 0} note="Gates and libraries" />
+        <StatTile
+          label="Active Cards"
+          value={activeCards.count ?? 0}
+          note="Issued or collected"
+        />
         <StatTile
           label="Today's Verifications"
           value={verificationsToday.count ?? 0}
           note="Identity scans since midnight"
         />
         <StatTile
-          label="Events Today"
-          value={eventsToday.count ?? 0}
-          note="All campus activity"
+          label="Library Transactions"
+          value={libraryTransactions.count ?? 0}
+          note="Issues and returns, all time"
         />
-      </div>
-
-      <div className="mt-6">
-        <Notice tone="info" title="Waiting on two subsystems">
-          Card and credential figures arrive with the identity subsystem. Library transaction
-          figures arrive with the library subsystem. Neither is invented here in the meantime.
-        </Notice>
       </div>
 
       <div className="mt-6">

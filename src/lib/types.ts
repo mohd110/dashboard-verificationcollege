@@ -1,25 +1,41 @@
 /**
- * Mirrors of the database enums declared in supabase/migrations.
+ * Mirrors of the live database vocabulary.
  *
- * When a migration adds a value, add it here too: the union types are what
- * stop a typo reaching the database as a silent no-op.
+ * app_role, campus_location_type and person_status are real Postgres enums and
+ * are reproduced exactly. Campus event types and results are text columns in
+ * this database, so the vocabulary is enforced by record_campus_event() and
+ * repeated here for the user interface.
  */
 
 export type AppRole =
-  | 'super_admin'
+  // The eight roles that already existed.
+  | 'platform_admin'
   | 'university_admin'
   | 'registrar'
   | 'department_admin'
-  | 'issuer_officer'
+  | 'card_operator'
+  | 'revocation_officer'
   | 'verifier'
-  | 'staff'
-  | 'student'
+  | 'auditor'
+  // Added for the campus flow.
   | 'guard'
   | 'librarian';
 
-export type RecordStatus = 'active' | 'inactive';
+export type LocationType = 'gate' | 'library' | 'hostel' | 'lab' | 'general';
 
-export type LocationType = 'gate' | 'library' | 'office';
+export type PersonStatus = 'active' | 'inactive' | 'archived';
+
+/** Credential lifecycle, owned by the identity subsystem. Read only here. */
+export type CredentialState = 'active' | 'suspended' | 'revoked' | 'superseded' | 'expired';
+
+/** Card lifecycle, owned by the identity subsystem. Read only here. */
+export type CardStatus =
+  | 'requested'
+  | 'printed'
+  | 'issued'
+  | 'collected'
+  | 'returned'
+  | 'destroyed';
 
 export type CampusEventType =
   | 'IDENTITY_VERIFIED'
@@ -41,14 +57,14 @@ export type CampusEventResult =
   | 'SENT';
 
 export const ROLE_LABELS: Record<AppRole, string> = {
-  super_admin: 'Super Admin',
+  platform_admin: 'Platform Admin',
   university_admin: 'University Admin',
   registrar: 'Registrar',
   department_admin: 'Department Admin',
-  issuer_officer: 'Issuing Officer',
+  card_operator: 'Card Operator',
+  revocation_officer: 'Revocation Officer',
   verifier: 'Verifier',
-  staff: 'Staff',
-  student: 'Student',
+  auditor: 'Auditor',
   guard: 'Guard',
   librarian: 'Librarian',
 };
@@ -67,20 +83,22 @@ export const EVENT_LABELS: Record<CampusEventType, string> = {
 export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
   gate: 'Gate',
   library: 'Library',
-  office: 'Office',
+  hostel: 'Hostel',
+  lab: 'Laboratory',
+  general: 'General',
 };
 
-/**
- * Roles an administrator can hand out from the Users screen.
- *
- * Each one leads somewhere that works today: guards, librarians and verifiers
- * get the scan console, administrators get the dashboard. Roles belonging to
- * subsystems nobody has built yet are deliberately not offered.
- */
+/** Roles the dashboard hands out. Each one leads to a screen that works. */
 export const ASSIGNABLE_ROLES = ['guard', 'librarian', 'verifier', 'university_admin'] as const;
 
 /** Roles that make no sense without a gate or library to stand at. */
 export const POSTED_ROLES = ['guard', 'librarian', 'verifier'] as const;
+
+/**
+ * user_roles carries a scope rather than a location column, so a posting is a
+ * role row scoped to one campus location.
+ */
+export const LOCATION_SCOPE = 'location';
 
 /** Results that mean the thing being recorded did not succeed. */
 export const FAILED_RESULTS: CampusEventResult[] = ['INVALID', 'REVOKED', 'EXPIRED', 'FAILED'];
