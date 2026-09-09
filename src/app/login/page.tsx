@@ -5,9 +5,9 @@ export const metadata = { title: 'Sign in · GBPUAT Smart Identity' };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; reason?: string }>;
+  searchParams: Promise<{ next?: string }>;
 }) {
-  const { next, reason } = await searchParams;
+  const { next } = await searchParams;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-12">
@@ -23,12 +23,6 @@ export default async function LoginPage({
         </div>
 
         <div className="rounded-lg border border-line bg-surface p-6">
-          {reason === 'deactivated' ? (
-            <p className="mb-4 rounded-md bg-warn-light px-3 py-2 text-sm text-warn">
-              This account has been deactivated. Ask an administrator to restore it.
-            </p>
-          ) : null}
-
           <LoginForm next={next} />
         </div>
 

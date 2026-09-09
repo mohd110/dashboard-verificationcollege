@@ -25,21 +25,27 @@ export type StaffSession = {
 
 const ADMIN_ROLES: AppRole[] = ['super_admin', 'university_admin'];
 
-/**
- * The signed-in staff member, or null.
- *
- * Cached for the lifetime of one request so that a page and its layout do not
- * both pay for the same round trip.
- */
-export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
+/** Cached for the request, so a layout and its page share one round trip. */
+const getAuthUser = cache(async () => {
   const supabase = await createClient();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  return user;
+});
 
+/**
+ * The signed-in staff member.
+ *
+ * Null covers two different situations, which matters: nobody is signed in, or
+ * somebody is signed in whose login was never linked to a staff record. The
+ * guards below tell them apart.
+ */
+export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
+  const user = await getAuthUser();
   if (!user) return null;
 
+  const supabase = await createClient();
   const { data } = await supabase
     .from('app_users')
     .select(
@@ -85,13 +91,21 @@ export function homePathFor(session: StaffSession): string {
 }
 
 /**
- * Guards a page. Redirects rather than throwing, so a deactivated account or a
- * guard who typed an admin URL gets somewhere sensible instead of an error.
+ * Guards a page.
+ *
+ * Somebody with a login but no staff record goes to /no-access rather than to
+ * /login: the middleware sends a signed-in visitor away from /login, so the two
+ * would otherwise bounce off each other for ever.
  */
 export async function requireStaffSession(): Promise<StaffSession> {
   const session = await getStaffSession();
-  if (!session) redirect('/login');
-  if (session.status !== 'active') redirect('/login?reason=deactivated');
+
+  if (!session) {
+    if (await getAuthUser()) redirect('/no-access');
+    redirect('/login');
+  }
+
+  if (session.status !== 'active') redirect('/no-access?reason=deactivated');
   return session;
 }
 
