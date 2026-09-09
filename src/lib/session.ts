@@ -2,7 +2,7 @@ import { cache } from 'react';
 import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
-import { LOCATION_SCOPE, type AppRole, type LocationType } from '@/lib/types';
+import type { AppRole, LocationType } from '@/lib/types';
 
 export type Posting = {
   id: string;
@@ -72,7 +72,7 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
     .select(
       `id, display_name, status, university_id, auth_user_id,
        universities ( legal_name ),
-       user_roles ( role, scope_type, scope_id )`,
+       user_roles ( role, location_id )`,
     )
     .eq('auth_user_id', user.id)
     .maybeSingle();
@@ -82,8 +82,7 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
   const university = data.universities as unknown as { legal_name: string } | null;
   const grants = (data.user_roles ?? []) as unknown as Array<{
     role: AppRole;
-    scope_type: string | null;
-    scope_id: string | null;
+    location_id: string | null;
   }>;
 
   if (grants.length === 0) return null;
@@ -91,19 +90,14 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
   const role = [...grants]
     .sort((a, b) => ROLE_PRECEDENCE.indexOf(a.role) - ROLE_PRECEDENCE.indexOf(b.role))[0].role;
 
-  // A posting is a role row scoped to a location. It is fetched separately
-  // because user_roles.scope_id has no foreign key to campus_locations, so
-  // PostgREST cannot embed it.
-  const scopedToLocation = grants.find(
-    (grant) => grant.scope_type === LOCATION_SCOPE && grant.scope_id,
-  );
+  const posted = grants.find((grant) => grant.location_id);
 
   let posting: Posting | null = null;
-  if (scopedToLocation?.scope_id) {
+  if (posted?.location_id) {
     const { data: location } = await supabase
       .from('campus_locations')
       .select('id, code, name, type')
-      .eq('id', scopedToLocation.scope_id)
+      .eq('id', posted.location_id)
       .maybeSingle();
     posting = (location as Posting | null) ?? null;
   }

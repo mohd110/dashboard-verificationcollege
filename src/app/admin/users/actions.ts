@@ -7,7 +7,7 @@ import type { ActionState } from '@/lib/action-state';
 import { assertAdminForAction } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
-import { ASSIGNABLE_ROLES, LOCATION_SCOPE, POSTED_ROLES } from '@/lib/types';
+import { ASSIGNABLE_ROLES, POSTED_ROLES } from '@/lib/types';
 
 const newUser = z.object({
   fullName: z.string().trim().min(2, 'Enter the full name.').max(80),
@@ -102,8 +102,9 @@ export async function createStaffUser(
   const { error: roleError } = await admin.from('user_roles').insert({
     user_id: profile.id,
     role,
-    scope_type: locationId ? LOCATION_SCOPE : 'university',
-    scope_id: locationId ?? session.universityId,
+    scope_type: 'university',
+    scope_id: session.universityId,
+    location_id: locationId,
   });
 
   if (roleError) {
@@ -166,7 +167,7 @@ export async function setUserPosting(
   _state: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await assertAdminForAction();
+  await assertAdminForAction();
 
   const parsed = postingChange.safeParse({
     roleId: formData.get('roleId'),
@@ -203,10 +204,7 @@ export async function setUserPosting(
 
   const { error } = await supabase
     .from('user_roles')
-    .update({
-      scope_type: locationId ? LOCATION_SCOPE : 'university',
-      scope_id: locationId ?? session.universityId,
-    })
+    .update({ location_id: locationId })
     .eq('id', parsed.data.roleId);
 
   if (error) return { error: error.message, message: null };

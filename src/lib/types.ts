@@ -94,11 +94,5 @@ export const ASSIGNABLE_ROLES = ['guard', 'librarian', 'verifier', 'university_a
 /** Roles that make no sense without a gate or library to stand at. */
 export const POSTED_ROLES = ['guard', 'librarian', 'verifier'] as const;
 
-/**
- * user_roles carries a scope rather than a location column, so a posting is a
- * role row scoped to one campus location.
- */
-export const LOCATION_SCOPE = 'location';
-
 /** Results that mean the thing being recorded did not succeed. */
 export const FAILED_RESULTS: CampusEventResult[] = ['INVALID', 'REVOKED', 'EXPIRED', 'FAILED'];

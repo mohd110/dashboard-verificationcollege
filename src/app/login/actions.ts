@@ -8,7 +8,10 @@ import { createClient } from '@/lib/supabase/server';
 const credentials = z.object({
   email: z.email('Enter the email address you were given.'),
   password: z.string().min(1, 'Enter your password.'),
-  next: z.string().optional(),
+  // FormData.get returns null for a field that is not on the form, and the
+  // hidden "next" input only exists when somebody was redirected here. Optional
+  // alone would reject that null and block every ordinary sign-in.
+  next: z.string().nullish(),
 });
 
 export type SignInState = { error: string | null };

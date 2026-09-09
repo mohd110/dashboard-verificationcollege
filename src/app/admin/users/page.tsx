@@ -4,7 +4,6 @@ import { requireAdminSession } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 import {
   ASSIGNABLE_ROLES,
-  LOCATION_SCOPE,
   POSTED_ROLES,
   ROLE_LABELS,
   type AppRole,
@@ -20,7 +19,7 @@ type StaffRow = {
   display_name: string;
   status: string;
   auth_user_id: string | null;
-  user_roles: { id: string; role: AppRole; scope_type: string | null; scope_id: string | null }[];
+  user_roles: { id: string; role: AppRole; location_id: string | null }[];
 };
 
 type LocationOption = { id: string; name: string; type: LocationType };
@@ -36,7 +35,7 @@ export default async function UsersPage() {
     supabase
       .from('app_users')
       .select(
-        'id, display_name, status, auth_user_id, user_roles ( id, role, scope_type, scope_id )',
+        'id, display_name, status, auth_user_id, user_roles ( id, role, location_id )',
       )
       .order('display_name'),
     supabase
@@ -68,8 +67,7 @@ export default async function UsersPage() {
               const grant = member.user_roles?.[0];
               const active = member.status === 'active';
               const canBePosted = grant && (POSTED_ROLES as readonly string[]).includes(grant.role);
-              const postedLocationId =
-                grant?.scope_type === LOCATION_SCOPE ? (grant.scope_id ?? '') : '';
+              const postedLocationId = grant?.location_id ?? '';
 
               return (
                 <tr key={member.id} className="align-top hover:bg-canvas">
