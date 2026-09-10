@@ -112,11 +112,18 @@ duplicates, and only ever adds role grants:
 ### Checks
 
 ```bash
-npm test         # unit tests
+npm test         # unit tests, including the migrations
 npm run lint
 npm run typecheck
 npm run build
 ```
+
+`src/lib/__tests__/migrations.test.ts` runs 0106, 0107 and 0108 against a real
+Postgres, in process, using PGlite. It exists because 0106 first shipped with
+an `UPDATE ... FROM person_projection(p.id)`, which Postgres rejects outright:
+the target of an UPDATE cannot be referenced by a function in its FROM clause.
+Reading the SQL did not catch that and executing it did. Any migration this
+repository owns should be added to that file before it is pasted anywhere.
 
 ---
 

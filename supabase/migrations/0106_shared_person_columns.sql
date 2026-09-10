@@ -26,44 +26,55 @@
 -- projection of them.
 
 -- ---------------------------------------------------------------------------
--- One definition of what the projected values are, so the backfill below and
--- the triggers further down cannot drift apart.
+-- The current enrolment's number and department name, for one person.
+--
+-- Takes only a person id and never reads public.people. That matters twice:
+-- an UPDATE cannot pass its own target table's column into a function in the
+-- FROM clause, and a BEFORE INSERT trigger has no people row to read yet.
 -- ---------------------------------------------------------------------------
-create or replace function public.person_projection(p_person_id uuid)
-returns table (student_id text, department text, full_name text)
+drop function if exists public.person_projection(uuid);
+
+create or replace function public.person_enrolment_projection(p_person_id uuid)
+returns table (student_id text, department text)
 language sql
 stable
 set search_path = public, pg_temp
 as $fn$
-  select
-    e.student_number,
-    d.name,
-    nullif(btrim(concat_ws(' ', p.given_name, p.family_name)), '')
-  from public.people p
-  left join lateral (
-    select student_number, department_id
-    from public.enrolments
-    where person_id = p.id
-    order by (status = 'active') desc, start_date desc
-    limit 1
-  ) e on true
+  select e.student_number, d.name
+  from public.enrolments e
   left join public.departments d on d.id = e.department_id
-  where p.id = p_person_id;
+  where e.person_id = p_person_id
+  -- The active enrolment wins; a student may have finished others.
+  order by (e.status = 'active') desc, e.start_date desc nulls last
+  limit 1;
 $fn$;
 
 -- ---------------------------------------------------------------------------
--- Backfill. Only ever fills a gap: a value somebody has typed in by hand is
--- left where it is, because this migration is not entitled to overwrite it.
+-- Backfill. Only ever fills a gap: a value somebody typed in by hand is left
+-- where it is, because this migration is not entitled to overwrite it.
+--
+-- Two statements rather than one. The display name comes from columns already
+-- on the row and needs no join, and doing it separately means a person with no
+-- enrolment still gets a name.
 -- ---------------------------------------------------------------------------
+update public.people
+set full_name = nullif(btrim(concat_ws(' ', given_name, family_name)), '')
+where nullif(btrim(full_name), '') is null
+  and nullif(btrim(concat_ws(' ', given_name, family_name)), '') is not null;
+
 update public.people p
 set
-  student_id = coalesce(p.student_id, proj.student_id),
-  department = coalesce(p.department, proj.department),
-  full_name  = coalesce(nullif(btrim(p.full_name), ''), proj.full_name)
-from public.person_projection(p.id) proj
-where p.student_id is null
-   or p.department is null
-   or nullif(btrim(p.full_name), '') is null;
+  student_id = coalesce(p.student_id, e.student_number),
+  department = coalesce(p.department, d.name)
+from (
+  select distinct on (person_id)
+         person_id, student_number, department_id
+  from public.enrolments
+  order by person_id, (status = 'active') desc, start_date desc nulls last
+) e
+left join public.departments d on d.id = e.department_id
+where p.id = e.person_id
+  and (p.student_id is null or p.department is null);
 
 -- The library searches student_id and full_name on every keystroke.
 create index if not exists people_student_id_idx
@@ -75,8 +86,8 @@ create index if not exists people_role_name_idx
 -- Keep it current.
 --
 -- Two triggers, because the value can change from either side: a new enrolment
--- gives an existing person their number, and a new person may be inserted
--- after their enrolment already exists.
+-- gives an existing person their number, and a person may be inserted before
+-- their enrolment exists.
 -- ---------------------------------------------------------------------------
 create or replace function public.people_fill_projection()
 returns trigger
@@ -92,9 +103,14 @@ begin
   );
 
   if new.student_id is null or new.department is null then
-    select * into v_proj from public.person_projection(new.id);
-    new.student_id := coalesce(new.student_id, v_proj.student_id);
-    new.department := coalesce(new.department, v_proj.department);
+    select * into v_proj from public.person_enrolment_projection(new.id);
+
+    -- No enrolment yet is the normal case for a brand-new person. The trigger
+    -- on enrolments fills these in as soon as one exists.
+    if found then
+      new.student_id := coalesce(new.student_id, v_proj.student_id);
+      new.department := coalesce(new.department, v_proj.department);
+    end if;
   end if;
 
   return new;
@@ -114,8 +130,11 @@ as $fn$
 declare
   v_proj record;
 begin
-  select * into v_proj from public.person_projection(new.person_id);
+  select * into v_proj from public.person_enrolment_projection(new.person_id);
+  if not found then return new; end if;
 
+  -- Only touches student_id and department, neither of which the trigger on
+  -- people watches, so the two cannot set each other off.
   update public.people
   set student_id = coalesce(v_proj.student_id, student_id),
       department = coalesce(v_proj.department, department)
