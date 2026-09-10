@@ -9,29 +9,7 @@ import type { CampusEventType } from '@/lib/types';
 import { isRecordable, outcomeToEventResult } from '@/lib/verification/contract';
 import { verifyCredential } from '@/lib/verification/verify';
 
-export type ScanState = {
-  outcome: 'idle' | 'accepted' | 'rejected' | 'blocked';
-  headline: string;
-  detail: string;
-  studentName: string | null;
-  studentCode: string | null;
-  chainPosition: number | null;
-  /** True when the decision was made without checking a signature. */
-  provisional: boolean;
-  /** Changes on every scan, so the panel can flash even on an identical result. */
-  scanId: number;
-};
-
-export const idleScan: ScanState = {
-  outcome: 'idle',
-  headline: '',
-  detail: '',
-  studentName: null,
-  studentCode: null,
-  chainPosition: null,
-  provisional: false,
-  scanId: 0,
-};
+import { idleScan, type ScanState } from './scan-state';
 
 function blocked(detail: string, scanId: number): ScanState {
   return { ...idleScan, outcome: 'blocked', headline: 'Nothing recorded', detail, scanId };

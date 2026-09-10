@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { StaffSession } from '@/lib/session';
 import { ROLE_LABELS } from '@/lib/types';
 
-import { Sidebar, type NavLink } from './sidebar';
+import { Sidebar, type NavSet } from './sidebar';
 
 /**
  * The frame every signed-in screen sits in.
@@ -12,22 +12,26 @@ import { Sidebar, type NavLink } from './sidebar';
  * a navigation, so moving between screens repaints only the panel in the
  * middle. That, plus a loading skeleton on every route, is what stops a tab
  * change from looking like a page load.
+ *
+ * `nav` names a set of links rather than carrying one. Everything that crosses
+ * from here into the sidebar has to survive serialisation, and an icon is a
+ * function, so the links themselves stay on the client side of the boundary.
  */
 export function AppShell({
   session,
-  links,
+  nav,
   subtitle,
   children,
 }: {
   session: StaffSession;
-  links: NavLink[];
+  nav: NavSet;
   subtitle: string;
   children: ReactNode;
 }) {
   return (
     <div className="min-h-screen">
       <Sidebar
-        links={links}
+        nav={nav}
         subtitle={subtitle}
         userName={session.fullName}
         userRole={ROLE_LABELS[session.role]}

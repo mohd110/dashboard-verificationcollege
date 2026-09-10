@@ -3,7 +3,8 @@
 import { useActionState, useEffect, useRef } from 'react';
 import { CircleAlert, CircleCheck, CircleX, ScanLine } from 'lucide-react';
 
-import { idleScan, submitScan, type ScanState } from './actions';
+import { submitScan } from './actions';
+import { idleScan, type ScanState } from './scan-state';
 
 const TONE = {
   accepted: {
@@ -31,7 +32,12 @@ function ScanResult({ state, pending }: { state: ScanState; pending: boolean }) 
     );
   }
 
-  if (state.outcome === 'idle') {
+  // Anything that is not a known outcome falls back to the waiting state
+  // rather than throwing. This panel is the one screen a guard stands in front
+  // of all day, and a blank error page there is worse than a stale prompt.
+  const tone = TONE[state?.outcome as keyof typeof TONE];
+
+  if (!tone) {
     return (
       <div className="rounded-xl border-2 border-dashed border-line px-6 py-12 text-center">
         <ScanLine size={28} className="mx-auto text-faint" />
@@ -40,7 +46,6 @@ function ScanResult({ state, pending }: { state: ScanState; pending: boolean }) 
     );
   }
 
-  const tone = TONE[state.outcome];
   const Icon = tone.icon;
 
   return (

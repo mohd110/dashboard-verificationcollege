@@ -28,10 +28,12 @@ that and nothing more:
 0105_campus_row_level_security.sql policies for the two tables this side owns
 0106_shared_person_columns.sql     fills people.student_id and people.department
 0107_gate_lookups.sql              narrow reads a guard is allowed to make
+0108_current_staff_session.sql     the whole session in one round trip
 supabase/tests/campus_events_test.sql   run once to prove it works
 
 `RUN_2_paste_this.sql` bundles 0101 to 0104 and `RUN_3_paste_this.sql` bundles
-0106 and 0107, for pasting straight into the Supabase SQL editor.
+0106 to 0108, for pasting straight into the Supabase SQL editor. Run 3 is safe
+to run more than once.
 ```
 
 Read the header of 0105 before applying it. It closes anonymous read access to
@@ -216,6 +218,64 @@ await recordCampusEvent({
 
 The call throws if the signed-in role may not record that event type, or if the
 student or location belongs to another university.
+
+---
+
+## Why it is fast, and what made it slow
+
+The database holds 150 students, 20 books and a handful of events. Nothing here
+is slow because of how much data there is. It was slow because of how many
+times each page talked to Supabase.
+
+Measured against this project from a laptop in India:
+
+| | |
+|---|---|
+| one trivial one-row query | 303 ms |
+| the 150-student list with its nested joins | 463 ms |
+| `auth.getUser()` | 381 ms |
+
+A 150-row query costs barely more than a one-row query. The time is the round
+trip, not the work. So the way to make a screen quick is to make fewer calls.
+
+**The Vercel region is the largest single factor.** The Supabase database runs
+in AWS `ap-north-east-1`, Tokyo. Vercel puts functions in `iad1`, Washington
+DC, unless told otherwise, so every query crossed the Pacific and back.
+`vercel.json` now pins `hnd1`, Tokyo, which puts the functions in the same AWS
+region as the database. If the database is ever moved, move this with it:
+
+| Supabase region | Vercel region |
+|---|---|
+| ap-northeast-1 Tokyo | `hnd1` |
+| ap-south-1 Mumbai | `bom1` |
+| us-east-1 Virginia | `iad1` |
+| eu-west-1 Ireland | `dub1` |
+
+**The middleware no longer calls the network.** It used to call
+`auth.getUser()` on every request, including every prefetch Next fires for
+every link in the sidebar. It now reads the session cookie's own expiry
+locally and only reaches Supabase when the token is genuinely close to
+expiring. The signature is not checked there and nothing rests on it: the
+middleware decides a redirect, and row level security decides everything else.
+
+**The session is one call instead of three.** `current_staff_session()`,
+migration 0108, returns the staff row, the tenant, the role and the posting
+together, resolved from `auth.uid()` inside the database. PostgREST has already
+verified that token's signature, so a separate `getUser()` establishes nothing.
+
+```
+session, before   2 round trips   881 ms
+session, after    1 round trip    258 ms
+```
+
+`src/lib/session.ts` keeps the old path as a fallback, used once and then
+remembered, so a deployment running ahead of its database still signs people in
+rather than locking everyone out.
+
+**Every route has a `loading.tsx`,** which Next prefetches per sidebar link, so
+a tab change paints the shape of the next screen immediately. Slow halves of
+pages sit behind their own Suspense boundary, so the counters on the dashboard
+do not wait for the activity list.
 
 ---
 

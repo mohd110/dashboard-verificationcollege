@@ -21,22 +21,31 @@ import {
 
 import { signOut } from '@/app/login/actions';
 
-export type NavLink = { href: string; label: string; icon: LucideIcon };
+type NavLink = { href: string; label: string; icon: LucideIcon };
 
-export const ADMIN_LINKS: NavLink[] = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/students', label: 'Students', icon: Users },
-  { href: '/admin/cards', label: 'Cards', icon: BadgeCheck },
-  { href: '/admin/verifications', label: 'Verification History', icon: ScanLine },
-  { href: '/admin/activity', label: 'Activity Trail', icon: Activity },
-  { href: '/admin/locations', label: 'Locations', icon: MapPin },
-  { href: '/admin/users', label: 'Users', icon: UsersRound },
-  { href: '/admin/integrity', label: 'Integrity', icon: ShieldCheck },
-];
+/**
+ * The navigation lives here, in the client component that renders it.
+ *
+ * It cannot live in the layout and be passed down. A lucide icon is a
+ * function, functions do not survive the server-to-client boundary, and every
+ * entry would arrive as undefined. The layout chooses a set by name instead,
+ * which is a string and crosses safely.
+ */
+const NAV_SETS = {
+  admin: [
+    { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/admin/students', label: 'Students', icon: Users },
+    { href: '/admin/cards', label: 'Cards', icon: BadgeCheck },
+    { href: '/admin/verifications', label: 'Verification History', icon: ScanLine },
+    { href: '/admin/activity', label: 'Activity Trail', icon: Activity },
+    { href: '/admin/locations', label: 'Locations', icon: MapPin },
+    { href: '/admin/users', label: 'Users', icon: UsersRound },
+    { href: '/admin/integrity', label: 'Integrity', icon: ShieldCheck },
+  ],
+  console: [{ href: '/console', label: 'Scan', icon: ScanLine }],
+} as const satisfies Record<string, readonly NavLink[]>;
 
-export const CONSOLE_LINKS: NavLink[] = [
-  { href: '/console', label: 'Scan', icon: ScanLine },
-];
+export type NavSet = keyof typeof NAV_SETS;
 
 function isActive(pathname: string, href: string, roots: string[]): boolean {
   // A root link matches only itself, or every deeper page would light it up too.
@@ -45,18 +54,19 @@ function isActive(pathname: string, href: string, roots: string[]): boolean {
 }
 
 export function Sidebar({
-  links,
+  nav,
   subtitle,
   userName,
   userRole,
   posting,
 }: {
-  links: NavLink[];
+  nav: NavSet;
   subtitle: string;
   userName: string;
   userRole: string;
   posting: string | null;
 }) {
+  const links = NAV_SETS[nav];
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
