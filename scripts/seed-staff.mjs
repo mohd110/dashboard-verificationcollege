@@ -1,11 +1,12 @@
 /**
- * Gives the demo staff a way to sign in: the administrator, Amit the guard and
- * Neha the librarian.
+ * Gives the demo staff a way to sign in: the administrator, Amit the guard,
+ * Neha the librarian, and the records office — registrar, card operator,
+ * revocation officer and auditor.
  *
  * This is a shared team database, so the script is deliberately careful. It
  * links logins onto app_users rows that already exist rather than creating
  * second copies of the same person, it only ever adds role grants, and it
- * touches nothing outside the three accounts listed below.
+ * touches nothing outside the accounts listed below.
  *
  *   npm run seed:staff
  *
@@ -68,6 +69,33 @@ const STAFF = [
     displayName: 'Neha',
     role: 'librarian',
     locationCode: 'CENTRAL-LIB',
+    // The library records who issued a book as a people.id, not a login, so
+    // this account needs a person row to point at. See migration 003.
+    personRole: 'librarian',
+  },
+  {
+    email: 'registrar@demo.gbpuat.test',
+    displayName: 'Demo Registrar',
+    role: 'registrar',
+    locationCode: null,
+  },
+  {
+    email: 'cards@demo.gbpuat.test',
+    displayName: 'Demo Card Operator',
+    role: 'card_operator',
+    locationCode: null,
+  },
+  {
+    email: 'revocation@demo.gbpuat.test',
+    displayName: 'Demo Revocation Officer',
+    role: 'revocation_officer',
+    locationCode: null,
+  },
+  {
+    email: 'auditor@demo.gbpuat.test',
+    displayName: 'Demo Auditor',
+    role: 'auditor',
+    locationCode: null,
   },
 ];
 
@@ -234,6 +262,55 @@ async function upsertRole(member, appUserId) {
   return error.message;
 }
 
+/**
+ * Gives a staff account a people row, where the job needs one.
+ *
+ * book_transactions.actor_id points at people.id while campus_events.actor_id
+ * points at app_users.id: two identifiers for the same human being, which
+ * migration 003 documents and says to bridge on email. Without a matching
+ * person row a librarian can still issue a book, but the transaction records
+ * nobody as having issued it.
+ */
+async function upsertStaffPerson(member) {
+  if (!member.personRole) return null;
+
+  const { data: existing } = await admin
+    .from('people')
+    .select('id')
+    .eq('university_id', university.id)
+    .eq('email', member.email)
+    .maybeSingle();
+
+  if (existing) {
+    await admin
+      .from('people')
+      .update({ role: member.personRole, status: 'active' })
+      .eq('id', existing.id);
+    return existing.id;
+  }
+
+  const { data: inserted, error } = await admin
+    .from('people')
+    .insert({
+      university_id: university.id,
+      given_name: member.displayName.split(' ')[0],
+      family_name: member.displayName.split(' ').slice(1).join(' ') || 'Staff',
+      full_name: member.displayName,
+      email: member.email,
+      role: member.personRole,
+      status: 'active',
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.log(`${member.email.padEnd(30)} no person row: ${error.message}`);
+    return null;
+  }
+
+  return inserted.id;
+}
+
 console.log(`University: ${university.legal_name}\n`);
 
 let blocked = 0;
@@ -264,6 +341,8 @@ for (const member of STAFF) {
     }
     continue;
   }
+
+  await upsertStaffPerson(member);
 
   const posting = member.locationCode ? ` at ${member.locationCode}` : '';
   const how = record.created ? 'created' : 'linked to existing record';

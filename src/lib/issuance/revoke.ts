@@ -93,18 +93,43 @@ export async function setCredentialStatus(
 
   const now = new Date().toISOString();
 
-  const { error: updateError } = await db.from('credential_status').upsert({
-    credential_id: credentialId,
-    university_id: universityId,
-    status: targetStatus,
-    reason_code: reasonCode,
-    changed_at: now,
-    changed_by: actorId ?? null,
-  });
+  // An UPDATE, not an upsert. PostgREST sends an upsert as INSERT .. ON
+  // CONFLICT, and Postgres then checks the INSERT policy — of which
+  // credential_status has none, only credential_status_update. So every
+  // upsert here failed with "new row violates row-level security policy",
+  // whoever was signed in, and blocking a card could not work at all.
+  //
+  // The row always exists: record_credential_issued() writes one for every
+  // credential as it is issued. A count of zero therefore means the status row
+  // is genuinely missing or belongs to another university, and that is worth
+  // saying rather than papering over by inserting one.
+  const {
+    error: updateError,
+    count,
+  } = await db
+    .from('credential_status')
+    .update(
+      {
+        status: targetStatus,
+        reason_code: reasonCode,
+        changed_at: now,
+        changed_by: actorId ?? null,
+      },
+      { count: 'exact' },
+    )
+    .eq('credential_id', credentialId)
+    .eq('university_id', universityId);
 
   if (updateError) {
     throw new RevocationError(
       `The status could not be updated: ${updateError.message}`,
+      'update_failed',
+    );
+  }
+
+  if (count === 0) {
+    throw new RevocationError(
+      'This credential has no status record, so it cannot be blocked.',
       'update_failed',
     );
   }

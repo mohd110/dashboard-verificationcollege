@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
+import { createAdminClient } from '@/lib/supabase/admin';
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -40,4 +42,17 @@ export async function createClient() {
       },
     },
   );
+}
+
+/**
+ * Service role client, in the shape the library subsystem asks for.
+ *
+ * The library application was written against an async createServiceClient(),
+ * so this keeps that call signature and hands back the one admin client this
+ * project already has. Everything it is used for has already resolved the
+ * caller through getStaffSession(), which is what row level security would
+ * otherwise have done.
+ */
+export async function createServiceClient() {
+  return createAdminClient();
 }

@@ -10,7 +10,12 @@ import type { CompactCredential } from '@/lib/credential/profile';
 import { QrPayloadError, readScannedPayload } from '@/lib/qr/payload';
 import { createClient } from '@/lib/supabase/server';
 
-import type { CredentialStatus, VerificationOutcome, VerificationResult } from './contract';
+import type {
+  CredentialStatus,
+  VerificationOutcome,
+  VerificationPerson,
+  VerificationResult,
+} from './contract';
 
 /**
  * Turning a scan into a decision.
@@ -139,6 +144,16 @@ async function resolveHolder(jti: string): Promise<HolderRow | null> {
   };
 }
 
+function toPerson(holder: HolderRow): VerificationPerson {
+  return {
+    id: holder.person_id,
+    studentId: holder.student_id,
+    fullName: holder.full_name,
+    department: holder.department,
+    status: holder.person_status,
+  };
+}
+
 /**
  * Revocation, read live at the point of scan.
  *
@@ -181,6 +196,7 @@ async function verifySignedCard(payload: string, issuerCode?: string): Promise<V
         reason: error.message,
         provider,
         signatureChecked: false,
+        state: 'MALFORMED',
       };
     }
     throw error;
@@ -225,6 +241,9 @@ async function verifySignedCard(payload: string, issuerCode?: string): Promise<V
     signatureChecked: !['MALFORMED', 'UNKNOWN_ISSUER', 'KEY_REVOKED'].includes(result.state),
     subjectName: result.claims?.nm ?? null,
     subjectCode: result.claims?.sn ?? null,
+    person: holder ? toPerson(holder) : null,
+    keyId: result.keyId ?? null,
+    state: result.state,
   };
 }
 
@@ -265,8 +284,19 @@ async function verifyPrintedNumber(code: string): Promise<VerificationResult> {
     person_id: string;
     full_name: string | null;
     student_id: string | null;
+    department: string | null;
     person_status: string;
   }>)[0];
+
+  const resolved: VerificationPerson | null = person
+    ? {
+        id: person.person_id,
+        studentId: person.student_id,
+        fullName: person.full_name,
+        department: person.department,
+        status: person.person_status,
+      }
+    : null;
 
   if (!person) {
     return {
@@ -288,6 +318,7 @@ async function verifyPrintedNumber(code: string): Promise<VerificationResult> {
       reason: 'This student record is no longer active.',
       subjectName: person.full_name,
       subjectCode: person.student_id,
+      person: resolved,
     };
   }
 
@@ -300,6 +331,7 @@ async function verifyPrintedNumber(code: string): Promise<VerificationResult> {
     reason: 'Found on the register. No card signature was checked.',
     subjectName: person.full_name,
     subjectCode: person.student_id,
+    person: resolved,
   };
 }
 
@@ -345,4 +377,30 @@ export async function verifyCredential(
  */
 export function allowsPrintedNumbers(): boolean {
   return process.env.ALLOW_PRINTED_NUMBER_SCAN !== 'false';
+}
+
+/**
+ * The same check, under the name the library subsystem calls it by.
+ *
+ * The library application was written against verifyScannedCard(). Rather than
+ * keep a second copy of this module in step, it calls straight through, so
+ * both desks reach exactly the same verdict for the same card.
+ */
+export async function verifyScannedCard(
+  payload: string,
+  issuerCode?: string,
+): Promise<VerificationResult> {
+  return verifyCredential(payload, issuerCode);
+}
+
+/**
+ * Identifies a student already on screen, by their number.
+ *
+ * Used where staff have arrived at a student some other way — a link from the
+ * student list, a transaction row — and the screen still has to say what was
+ * and was not checked. It is the printed-number path, and it always reports
+ * that no signature was involved.
+ */
+export async function verifyStudentByCode(code: string): Promise<VerificationResult> {
+  return verifyPrintedNumber(code.trim());
 }

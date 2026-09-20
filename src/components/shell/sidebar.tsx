@@ -15,13 +15,23 @@ import {
   ShieldCheck,
   Users,
   UsersRound,
+  IdCard,
   X,
   type LucideIcon,
 } from 'lucide-react';
 
 import { signOut } from '@/app/login/actions';
 
-type NavLink = { href: string; label: string; icon: LucideIcon };
+type NavLink = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  /**
+   * Shown only to a role holding this capability. Absent means shown to
+   * everyone who reaches the nav set at all.
+   */
+  needs?: string;
+};
 
 /**
  * The navigation lives here, in the client component that renders it.
@@ -43,6 +53,11 @@ const NAV_SETS = {
     { href: '/admin/integrity', label: 'Integrity', icon: ShieldCheck },
   ],
   console: [{ href: '/console', label: 'Scan', icon: ScanLine }],
+  records: [
+    { href: '/records', label: 'Students', icon: Users, needs: 'students.read' },
+    { href: '/records/cards', label: 'Cards', icon: IdCard, needs: 'credentials.read' },
+    { href: '/records/activity', label: 'Activity Trail', icon: Activity, needs: 'activity.read' },
+  ],
 } as const satisfies Record<string, readonly NavLink[]>;
 
 export type NavSet = keyof typeof NAV_SETS;
@@ -59,14 +74,23 @@ export function Sidebar({
   userName,
   userRole,
   posting,
+  capabilities,
 }: {
   nav: NavSet;
   subtitle: string;
   userName: string;
   userRole: string;
   posting: string | null;
+  /**
+   * What this role may do, as plain strings. Links asking for something not in
+   * here are dropped. Strings rather than a function because everything that
+   * crosses into a client component has to survive serialisation.
+   */
+  capabilities?: readonly string[];
 }) {
-  const links = NAV_SETS[nav];
+  const links = (NAV_SETS[nav] as readonly NavLink[]).filter(
+    (link) => !link.needs || capabilities?.includes(link.needs),
+  );
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 

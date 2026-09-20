@@ -21,11 +21,14 @@ export function AppShell({
   session,
   nav,
   subtitle,
+  capabilities,
   children,
 }: {
   session: StaffSession;
   nav: NavSet;
   subtitle: string;
+  /** Capability names, for nav sets whose links differ by role. */
+  capabilities?: readonly string[];
   children: ReactNode;
 }) {
   return (
@@ -36,6 +39,7 @@ export function AppShell({
         userName={session.fullName}
         userRole={ROLE_LABELS[session.role]}
         posting={session.posting?.name ?? null}
+        capabilities={capabilities}
       />
 
       <div className="lg:pl-[244px]">

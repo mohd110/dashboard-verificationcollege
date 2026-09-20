@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import type { AppRole, CampusEventResult, CampusEventType, LocationType } from '@/lib/types';
 
 /**
@@ -162,6 +162,49 @@ export async function listCampusEvents(filters: EventFilters = {}): Promise<Camp
   let query = supabase
     .from('campus_events')
     .select(EVENT_SELECT)
+    .order('occurred_at', { ascending: false })
+    .limit(filters.limit ?? 100);
+
+  if (filters.personId) query = query.eq('person_id', filters.personId);
+  if (filters.locationId) query = query.eq('location_id', filters.locationId);
+  if (filters.actorId) query = query.eq('actor_id', filters.actorId);
+  if (filters.result) query = query.eq('result', filters.result);
+  if (filters.eventTypes?.length) query = query.in('event_type', filters.eventTypes);
+  if (filters.fromDate) query = query.gte('occurred_at', `${filters.fromDate}T00:00:00`);
+  if (filters.toDate) query = query.lte('occurred_at', `${filters.toDate}T23:59:59.999`);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return (data as unknown as EventRow[]).map(toCampusEvent);
+}
+
+/**
+ * The tenant's activity, for a role the campus_events policy does not cover.
+ *
+ * campus_events_read in migration 0105 lets an administrator see the whole
+ * university and lets everybody else see only what they recorded themselves.
+ * That is right for a guard, who needs to confirm their own scan landed and
+ * nothing more. It is wrong for the records office: a registrar reviewing a
+ * student and an auditor reading the trail are exactly the readers the
+ * activity record exists for, and both would see an empty page.
+ *
+ * Widening the policy is the proper fix and needs a migration. Until then this
+ * reads with the service role, and every caller must have passed
+ * requireRecordsSession('activity.read') first — the capability table in
+ * lib/records/access.ts is what stands in for the policy here. Read only:
+ * campus_events refuses updates and deletes at the trigger, whoever asks.
+ */
+export async function listCampusEventsForUniversity(
+  universityId: string,
+  filters: EventFilters = {},
+): Promise<CampusEvent[]> {
+  const supabase = await createServiceClient();
+
+  let query = supabase
+    .from('campus_events')
+    .select(EVENT_SELECT)
+    .eq('university_id', universityId)
     .order('occurred_at', { ascending: false })
     .limit(filters.limit ?? 100);
 

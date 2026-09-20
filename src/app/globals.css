@@ -143,3 +143,35 @@ body {
     margin: 12mm;
   }
 }
+
+/*
+  Material Symbols, for the gate application's icons.
+
+  It is a LIGATURE font: the element contains the literal text "verified" and
+  the font substitutes a glyph. That has one nasty failure mode — if the font
+  does not load, the browser renders the word itself, and an icon meant to be
+  24px wide suddenly demands 70px, tearing a row of them open. The box is
+  therefore pinned to 1em in both directions and overflow is clipped, so a font
+  failure stays cosmetic instead of structural.
+*/
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  max-width: 1em;
+  max-height: 1em;
+  overflow: hidden;
+  vertical-align: middle;
+  user-select: none;
+}

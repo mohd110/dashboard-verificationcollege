@@ -204,9 +204,32 @@ export function isAdmin(session: StaffSession): boolean {
   return ADMIN_ROLES.includes(session.role);
 }
 
-/** Where a role lands after signing in. */
+/**
+ * Where a role lands after signing in.
+ *
+ * Each panel is a different job, so each role goes straight to the one it
+ * does rather than to a menu. A librarian gets the issue desk, a guard gets
+ * the gate application, the records office roles get the student register, and
+ * an administrator gets the dashboard. /console remains the general scanning
+ * screen and is where anything else lands.
+ */
 export function homePathFor(session: StaffSession): string {
-  return isAdmin(session) ? '/admin' : '/console';
+  if (isAdmin(session)) return '/admin';
+
+  switch (session.role) {
+    case 'librarian':
+      return '/library';
+    case 'guard':
+      return '/guard';
+    case 'registrar':
+    case 'card_operator':
+    case 'revocation_officer':
+      return '/records';
+    case 'auditor':
+      return '/records/activity';
+    default:
+      return '/console';
+  }
 }
 
 /**
