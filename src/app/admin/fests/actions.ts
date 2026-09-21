@@ -8,15 +8,16 @@ import { z } from 'zod';
 import type { ActionState } from '@/lib/action-state';
 import { isMissingFestTables, parseCampusDateTime } from '@/lib/fests';
 import { assertAdminForAction } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 /**
  * Running a fest.
  *
- * Every write here goes through the administrator's own session, so the
- * policies in migration 0109 check it independently. The checks in this file
- * exist to turn a refusal into a sentence somebody can act on, not to be the
- * only thing standing in the way.
+ * Every write to the fest tables goes through the administrator's own
+ * session, so the policies in migration 0109 check it independently. The one
+ * exception is the fest's campus location, which has no admin write policy on
+ * the live database and is written with the service role after the
+ * administrator check — see createFest.
  */
 
 const MIGRATION_HINT =
@@ -84,7 +85,13 @@ export async function createFest(_state: ActionState, formData: FormData): Promi
   if (probe.error) return failure(probe.error, 'The fest could not be created.');
 
   // The fest's own place on campus. Scans recorded here are its attendance.
-  const { data: location, error: locationError } = await supabase
+  //
+  // Written with the service role: campus_locations has no admin write policy
+  // on the live database (migration 0105 was never applied there — see the
+  // note in admin/locations/actions). The caller has already been checked as
+  // an administrator above, and the university comes from their session.
+  const service = await createServiceClient();
+  const { data: location, error: locationError } = await service
     .from('campus_locations')
     .insert({
       university_id: session.universityId,
@@ -118,7 +125,11 @@ export async function createFest(_state: ActionState, formData: FormData): Promi
   if (error || !fest) {
     // Nothing references the location yet, so retiring it is safe and keeps
     // an abandoned fest from appearing as a live place to scan.
-    await supabase.from('campus_locations').update({ status: 'inactive' }).eq('id', location.id);
+    await service
+      .from('campus_locations')
+      .update({ status: 'inactive' })
+      .eq('id', location.id)
+      .eq('university_id', session.universityId);
     return failure(error, 'The fest could not be created.');
   }
 
@@ -134,7 +145,7 @@ const idRequest = z.object({ festId: z.uuid() });
  * inactive location, whatever the gate app thinks.
  */
 export async function cancelFest(_state: ActionState, formData: FormData): Promise<ActionState> {
-  await assertAdminForAction();
+  const session = await assertAdminForAction();
 
   const parsed = idRequest.safeParse({ festId: formData.get('festId') });
   if (!parsed.success) return { error: 'That fest could not be identified.', message: null };
@@ -149,7 +160,20 @@ export async function cancelFest(_state: ActionState, formData: FormData): Promi
 
   if (error || !fest) return failure(error, 'The fest could not be cancelled.');
 
-  await supabase.from('campus_locations').update({ status: 'inactive' }).eq('id', fest.location_id);
+  // Service role for the same reason as in createFest.
+  const service = await createServiceClient();
+  const { error: retireError } = await service
+    .from('campus_locations')
+    .update({ status: 'inactive' })
+    .eq('id', fest.location_id)
+    .eq('university_id', session.universityId);
+
+  if (retireError) {
+    return {
+      error: `The fest is cancelled, but its gate could not be retired: ${retireError.message}`,
+      message: null,
+    };
+  }
 
   revalidatePath('/admin/fests');
   revalidatePath(`/admin/fests/${parsed.data.festId}`);

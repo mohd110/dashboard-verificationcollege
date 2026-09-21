@@ -222,7 +222,11 @@ export async function listDuties(festId: string): Promise<GuardDuty[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('fest_guard_duties')
-    .select('id, guard_user_id, post, shift_starts_at, shift_ends_at, app_users ( display_name )')
+    // Named explicitly: this table points at app_users twice — the guard, and
+    // whoever rostered them — and PostgREST refuses to guess which is meant.
+    .select(
+      'id, guard_user_id, post, shift_starts_at, shift_ends_at, guard:app_users!guard_user_id ( display_name )',
+    )
     .eq('fest_id', festId)
     .order('shift_starts_at');
 
@@ -234,11 +238,11 @@ export async function listDuties(festId: string): Promise<GuardDuty[]> {
     post: string;
     shift_starts_at: string;
     shift_ends_at: string;
-    app_users: { display_name: string } | null;
+    guard: { display_name: string } | null;
   }>).map((row) => ({
     id: row.id,
     guardUserId: row.guard_user_id,
-    guardName: row.app_users?.display_name ?? 'Unknown guard',
+    guardName: row.guard?.display_name ?? 'Unknown guard',
     post: row.post,
     shiftStartsAt: row.shift_starts_at,
     shiftEndsAt: row.shift_ends_at,

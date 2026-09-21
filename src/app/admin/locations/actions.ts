@@ -5,7 +5,23 @@ import { z } from 'zod';
 
 import type { ActionState } from '@/lib/action-state';
 import { assertAdminForAction } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
+
+/*
+  Why the service role here.
+
+  Migration 0105 gives campus_locations its admin insert and update policies,
+  and it was deliberately left out when the campus migrations were applied to
+  the live database. So the table has a read policy and nothing else: an
+  administrator's insert was refused outright, and — worse — an update matched
+  zero rows under row level security and came back as a success. "Location
+  deactivated" was shown for a location that had not changed.
+
+  Rather than depend on a migration nobody has run, these writes check the
+  caller is an administrator first and then go through the service role,
+  pinned to the administrator's own university on every statement. Applying
+  0105 later changes nothing here.
+*/
 
 const newLocation = z.object({
   code: z
@@ -36,7 +52,7 @@ export async function createLocation(
     return { error: parsed.error.issues[0].message, message: null };
   }
 
-  const supabase = await createClient();
+  const supabase = await createServiceClient();
   const { error } = await supabase.from('campus_locations').insert({
     // Taken from the session, never from the form, so a crafted request cannot
     // add a location to another campus.
@@ -71,7 +87,7 @@ export async function setLocationStatus(
   _state: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  await assertAdminForAction();
+  const session = await assertAdminForAction();
 
   const parsed = statusChange.safeParse({
     id: formData.get('id'),
@@ -82,13 +98,21 @@ export async function setLocationStatus(
     return { error: 'That location could not be updated.', message: null };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase
+  const supabase = await createServiceClient();
+  const { data, error } = await supabase
     .from('campus_locations')
     .update({ status: parsed.data.status })
-    .eq('id', parsed.data.id);
+    .eq('id', parsed.data.id)
+    .eq('university_id', session.universityId)
+    .select('id');
 
   if (error) return { error: error.message, message: null };
+
+  // Zero rows is a failure, not a success. Reporting it as one is exactly the
+  // bug this replaced.
+  if (!data || data.length === 0) {
+    return { error: 'That location is not on this campus.', message: null };
+  }
 
   revalidatePath('/admin/locations');
   return {
