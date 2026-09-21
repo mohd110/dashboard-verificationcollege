@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "seed:staff": "node --env-file=.env.local scripts/seed-staff.mjs",
     "typecheck": "tsc --noEmit",
-    "key:generate": "node --env-file=.env.local scripts/generate-key.mjs"
+    "key:generate": "node --env-file=.env.local scripts/generate-key.mjs",
+    "docs:walkthrough": "node --env-file=.env.local scripts/walkthrough/build.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
