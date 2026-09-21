@@ -16,6 +16,7 @@ import {
   Users,
   UsersRound,
   IdCard,
+  PartyPopper,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -48,6 +49,7 @@ const NAV_SETS = {
     { href: '/admin/cards', label: 'Cards', icon: BadgeCheck },
     { href: '/admin/verifications', label: 'Verification History', icon: ScanLine },
     { href: '/admin/activity', label: 'Activity Trail', icon: Activity },
+    { href: '/admin/fests', label: 'Fests & Events', icon: PartyPopper },
     { href: '/admin/locations', label: 'Locations', icon: MapPin },
     { href: '/admin/users', label: 'Users', icon: UsersRound },
     { href: '/admin/integrity', label: 'Integrity', icon: ShieldCheck },

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 import type { IssuerKeyResolver, KeyStatus, PublicKeyRecord, SigningAlgorithm } from './signer';
 import { StaticKeyResolver } from './verify';
@@ -47,10 +47,41 @@ function toRecord(row: KeyRow): PublicKeyRecord {
  * of them. A public key is public by definition and is already served at
  * /.well-known/jwks.json, so the function publishes the same thing to a signed
  * -in session without widening the table policy for everyone.
+ *
+ * @param anonymous read with the service role because the caller has no
+ * session at all. The student pass is the one such caller: a student proves
+ * who they are by presenting a signed card, which cannot be checked without
+ * first holding the key that signed it. Nothing private is exposed either way
+ * — these are public keys, already served at /.well-known/jwks.json.
  */
-export async function loadIssuerKeys(): Promise<PublicKeyRecord[]> {
+export async function loadIssuerKeys(anonymous = false): Promise<PublicKeyRecord[]> {
   const now = Date.now();
   if (cached && now - cached.fetchedAt < CACHE_MILLISECONDS) return cached.keys;
+
+  // published_issuer_keys() filters on current_university_id(), which is null
+  // when there is no signed-in user. Called with the service role it therefore
+  // succeeds and returns nothing, which reads downstream as "signed by a key
+  // this university does not publish" — a confusing way to say "we could not
+  // look". An anonymous caller reads the table instead, which the service role
+  // may do and which needs no session to scope it.
+  if (anonymous) {
+    const service = await createServiceClient();
+    const { data: keyRows, error: keyError } = await service
+      .from('issuer_keys')
+      .select('kid, alg, public_jwk, status, not_before, not_after')
+      .order('not_before', { ascending: false });
+
+    if (keyError) {
+      if (cached) return cached.keys;
+      throw new Error(`The signing keys could not be read: ${keyError.message}`);
+    }
+
+    const anonKeys = ((keyRows ?? []) as KeyRow[]).map(toRecord);
+    if (anonKeys.length === 0) return cached?.keys ?? anonKeys;
+
+    cached = { keys: anonKeys, fetchedAt: now };
+    return anonKeys;
+  }
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc('published_issuer_keys');
@@ -78,12 +109,19 @@ export async function loadIssuerKeys(): Promise<PublicKeyRecord[]> {
   }
 
   const keys = rows.map(toRecord);
+
+  // An empty set is never cached. A read that comes back with no keys refuses
+  // every card on campus, and caching that would keep refusing them for five
+  // minutes after whatever caused it had been fixed. Falling back to a stale
+  // set, or to reading again on the next scan, is the safer failure.
+  if (keys.length === 0) return cached?.keys ?? keys;
+
   cached = { keys, fetchedAt: now };
   return keys;
 }
 
-export async function issuerKeyResolver(): Promise<IssuerKeyResolver> {
-  return new StaticKeyResolver(await loadIssuerKeys());
+export async function issuerKeyResolver(anonymous = false): Promise<IssuerKeyResolver> {
+  return new StaticKeyResolver(await loadIssuerKeys(anonymous));
 }
 
 /** Drops the cache, so a freshly rotated key is used on the very next scan. */

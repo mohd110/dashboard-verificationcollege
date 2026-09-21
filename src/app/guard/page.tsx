@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { GuardApp, type GuardStats } from '@/components/guard/GuardApp';
 import type { ClearanceItem } from '@/components/guard/GuardHomeView';
 import { listCampusEvents } from '@/lib/events';
+import { getActiveDuty } from '@/lib/fests';
 import { getStaffSession, homePathFor } from '@/lib/session';
 import { FAILED_RESULTS } from '@/lib/types';
 
@@ -27,7 +28,10 @@ export default async function GuardPage() {
   if (session.status !== 'active') redirect('/no-access?reason=deactivated');
   if (!GATE_ROLES.includes(session.role)) redirect(homePathFor(session));
 
-  if (!session.posting) {
+  // Fest duty outranks the ordinary posting for the length of the shift.
+  const duty = await getActiveDuty(session);
+
+  if (!session.posting && !duty) {
     return (
       <main
         style={{
@@ -52,8 +56,10 @@ export default async function GuardPage() {
     );
   }
 
-  const posting = session.posting;
-  const recent = await listCampusEvents({ locationId: posting.id, limit: 25 });
+  const place = duty
+    ? { id: duty.locationId, name: duty.festName }
+    : { id: session.posting!.id, name: session.posting!.name };
+  const recent = await listCampusEvents({ locationId: place.id, limit: 25 });
 
   const feed: ClearanceItem[] = recent.map((event) => {
     const denied = FAILED_RESULTS.includes(event.result);
@@ -69,7 +75,7 @@ export default async function GuardPage() {
         timeZone: 'Asia/Kolkata',
       }),
       dept: '—',
-      lane: posting.name,
+      lane: duty ? duty.post : place.name,
       status: denied ? 'DENIED' : 'VERIFIED',
       reason: metadata.reason,
     };
@@ -101,11 +107,22 @@ export default async function GuardPage() {
     <GuardApp
       officerName={session.fullName}
       officerShield={shield}
-      gateName={posting.name}
+      gateName={place.name}
       lanes={LANES}
       initialLane={LANES[0]}
       initialFeed={feed}
       initialStats={stats}
+      duty={
+        duty
+          ? {
+              festName: duty.festName,
+              post: duty.post,
+              venue: duty.venue,
+              shiftEndsAt: duty.shiftEndsAt,
+              coordinators: duty.coordinators,
+            }
+          : null
+      }
     />
   );
 }

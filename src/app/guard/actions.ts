@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import type { UnifiedVerificationResponse } from '@/lib/guard/contract';
 import { recordCampusEvent } from '@/lib/events';
+import { getActiveDuty } from '@/lib/fests';
 import { getStaffSession } from '@/lib/session';
 import { outcomeToEventResult, isRecordable } from '@/lib/verification/contract';
 import { verifyCredential } from '@/lib/verification/verify';
@@ -45,9 +46,18 @@ export async function verifyAtGate(payload: string): Promise<UnifiedVerification
   if (!session || session.status !== 'active') {
     return refusal('Your session has ended. Sign in again.');
   }
-  if (!session.posting) {
+  // A guard on fest duty records against the fest for the length of the
+  // shift, which is what turns their scans into that fest's attendance. The
+  // ordinary posting takes over again the moment the shift ends.
+  const duty = await getActiveDuty(session);
+
+  if (!session.posting && !duty) {
     return refusal('You are not posted to a gate, so a scan would have nowhere to be recorded.');
   }
+
+  const place = duty
+    ? { id: duty.locationId, type: 'general' as const }
+    : { id: session.posting!.id, type: session.posting!.type };
 
   const parsed = scan.safeParse({ payload });
   if (!parsed.success) return refusal(parsed.error.issues[0].message);
@@ -81,7 +91,7 @@ export async function verifyAtGate(payload: string): Promise<UnifiedVerification
   // A library posting records an entry; a gate records an identity check. The
   // same guard screen therefore works at either, which is what the console
   // already does for the same reason.
-  const atLibrary = session.posting.type === 'library';
+  const atLibrary = place.type === 'library';
   const eventType = result.verified
     ? atLibrary
       ? ('LIBRARY_ENTRY' as const)
@@ -96,7 +106,7 @@ export async function verifyAtGate(payload: string): Promise<UnifiedVerification
           ? 'SUCCESS'
           : outcomeToEventResult(result.verificationResult),
       personId: result.personId,
-      locationId: session.posting.id,
+      locationId: place.id,
       entityType: result.credentialId ? 'credential' : null,
       entityId: result.credentialId,
       metadata: {
@@ -106,6 +116,7 @@ export async function verifyAtGate(payload: string): Promise<UnifiedVerification
         key_id: result.keyId ?? null,
         reason: result.reason,
         desk: 'gate_app',
+        ...(duty ? { fest_id: duty.festId, fest_post: duty.post } : {}),
       },
       occurredAt: new Date(result.verifiedAt),
       systemActor: eventType === 'LIBRARY_ENTRY',

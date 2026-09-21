@@ -36,7 +36,17 @@ export type GuardStats = {
   lastScannedAgo: string;
 };
 
+/** The fest shift this guard is working, if any. Strings only: it crosses to the client. */
+export type GuardDutyView = {
+  festName: string;
+  post: string;
+  venue: string | null;
+  shiftEndsAt: string;
+  coordinators: Array<{ name: string; designation: string; phone: string | null }>;
+};
+
 export type GuardAppProps = {
+  duty?: GuardDutyView | null;
   officerName: string;
   officerShield: string;
   gateName: string;
@@ -50,6 +60,7 @@ export type GuardAppProps = {
 type Toast = { tone: 'ok' | 'info'; text: string } | null;
 
 export function GuardApp({
+  duty = null,
   officerName,
   officerShield,
   gateName,
@@ -254,6 +265,7 @@ export function GuardApp({
       </header>
 
       <main style={{ padding: '16px 16px 80px', minWidth: 0, overflowX: 'hidden' }}>
+        {duty ? <DutyBanner duty={duty} /> : null}
         {activeTab === 'home' && (
           <GuardHomeView
             officerName={officerName}
@@ -459,5 +471,104 @@ export function GuardApp({
         </button>
       </nav>
     </div>
+  );
+}
+
+/**
+ * The fest shift, pinned above everything else.
+ *
+ * A guard at a fest gate needs two things the ordinary gate does not: to know
+ * that their scans are counting towards the fest, and a number to ring when a
+ * VIP arrives without a card or the queue backs up. So the coordinators'
+ * phone numbers are right here, one tap from a call.
+ */
+function DutyBanner({ duty }: { duty: GuardDutyView }) {
+  const until = new Date(duty.shiftEndsAt).toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  });
+
+  return (
+    <section
+      style={{
+        background: 'linear-gradient(135deg, #5b21b6 0%, #7c3aed 100%)',
+        color: '#ffffff',
+        borderRadius: '16px',
+        padding: '14px 16px',
+        marginBottom: '16px',
+        boxShadow: '0 6px 16px rgba(91, 33, 182, 0.25)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+        <Icon name="celebration" size={18} color="#ffffff" />
+        <span
+          style={{
+            fontSize: '10px',
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            opacity: 0.85,
+          }}
+        >
+          Event duty · until {until}
+        </span>
+      </div>
+      <div style={{ fontSize: '17px', fontWeight: 700, lineHeight: 1.25 }}>{duty.festName}</div>
+      <div style={{ fontSize: '12.5px', opacity: 0.9, marginTop: '2px' }}>
+        Post: {duty.post}
+        {duty.venue ? ` · ${duty.venue}` : ''}
+      </div>
+      <div style={{ fontSize: '11px', opacity: 0.75, marginTop: '6px', lineHeight: 1.45 }}>
+        Every card you check now is recorded as attendance for this event.
+      </div>
+
+      {duty.coordinators.length > 0 ? (
+        <div
+          style={{
+            marginTop: '12px',
+            paddingTop: '10px',
+            borderTop: '1px solid rgba(255, 255, 255, 0.2)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+          }}
+        >
+          {duty.coordinators.map((person) => (
+            <div
+              key={`${person.name}-${person.designation}`}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '12.5px', fontWeight: 600 }}>{person.name}</div>
+                <div style={{ fontSize: '10.5px', opacity: 0.75 }}>{person.designation}</div>
+              </div>
+              {person.phone ? (
+                <a
+                  href={`tel:${person.phone}`}
+                  aria-label={`Call ${person.name}`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '6px 10px',
+                    borderRadius: '999px',
+                    background: 'rgba(255, 255, 255, 0.18)',
+                    color: '#ffffff',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    textDecoration: 'none',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Icon name="call" size={14} color="#ffffff" />
+                  Call
+                </a>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }

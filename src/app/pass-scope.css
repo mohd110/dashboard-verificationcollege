@@ -1,0 +1,616 @@
+/*
+  The student pass.
+
+  A third design system in one application needs justifying. The admin
+  dashboard is a desk tool read in daylight on a wide screen; the library panel
+  is the same shape. This is neither. It is held in one hand, at a gate, often
+  at night, by somebody who needs one fact off it in about two seconds. So it
+  is dark, it is large, and the single most important thing on it — whether the
+  card will be accepted — is the biggest thing on the screen.
+
+  Scoped under .pass-scope for the same reason the library's rules are scoped:
+  these class names are generic and would otherwise collide. Nothing here
+  reaches :root.
+*/
+
+.pass-scope {
+  --p-ink: #f8fafc;
+  --p-ink-soft: #cbd5e1;
+  --p-ink-faint: #8595ad;
+  --p-bg: #0a1020;
+  --p-surface: #111a2e;
+  --p-surface-2: #17223c;
+  --p-line: #26334f;
+
+  --p-brand: #3b82f6;
+  --p-brand-deep: #1e3a5f;
+  --p-gold: #c89d42;
+
+  --p-ok: #34d399;
+  --p-ok-bg: rgba(16, 185, 129, 0.12);
+  --p-ok-line: rgba(52, 211, 153, 0.35);
+  --p-warn: #fbbf24;
+  --p-warn-bg: rgba(251, 191, 36, 0.12);
+  --p-warn-line: rgba(251, 191, 36, 0.35);
+  --p-bad: #f87171;
+  --p-bad-bg: rgba(248, 113, 113, 0.12);
+  --p-bad-line: rgba(248, 113, 113, 0.35);
+
+  min-height: 100vh;
+  background:
+    radial-gradient(1100px 520px at 50% -10%, #16233f 0%, transparent 62%),
+    var(--p-bg);
+  color: var(--p-ink);
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+
+  & *,
+  & *::before,
+  & *::after {
+    box-sizing: border-box;
+  }
+
+  /* ── Frame ─────────────────────────────────────────────────────────── */
+
+  .pass-shell {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 20px 16px 104px;
+  }
+
+  .pass-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .pass-wordmark {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .pass-crest {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border-radius: 10px;
+    background: linear-gradient(140deg, var(--p-brand) 0%, var(--p-brand-deep) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .pass-wordmark__title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .pass-wordmark__sub {
+    margin: 1px 0 0;
+    font-size: 10.5px;
+    color: var(--p-ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  /* ── The card ──────────────────────────────────────────────────────── */
+
+  .pass-card {
+    position: relative;
+    border-radius: 20px;
+    padding: 20px;
+    background: linear-gradient(150deg, #1c2b4a 0%, #131d33 55%, #101829 100%);
+    border: 1px solid var(--p-line);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+  }
+
+  /* A slow sheen. It reads as "this is a live document", not a screenshot. */
+  .pass-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, 0.07) 50%, transparent 62%);
+    transform: translateX(-100%);
+    animation: pass-sheen 7s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes pass-sheen {
+    0%, 72% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pass-card::after { animation: none; }
+  }
+
+  .pass-card__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .pass-card__uni {
+    margin: 0;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--p-gold);
+  }
+
+  .pass-card__name {
+    margin: 6px 0 2px;
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
+  .pass-card__meta {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--p-ink-soft);
+  }
+
+  .pass-card__number {
+    font-family: var(--font-jetbrains), ui-monospace, monospace;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    color: var(--p-ink);
+  }
+
+  .pass-qr {
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .pass-qr svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .pass-qr--muted {
+    position: relative;
+  }
+
+  /* A card that will be refused must not look scannable. */
+  .pass-qr--muted svg {
+    opacity: 0.18;
+    filter: grayscale(1);
+  }
+
+  .pass-qr__struck {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 16px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #b91c1c;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .pass-card__foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--p-line);
+  }
+
+  .pass-fact__label {
+    margin: 0 0 2px;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--p-ink-faint);
+  }
+
+  .pass-fact__value {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--p-ink-soft);
+  }
+
+  /* ── The verdict ───────────────────────────────────────────────────── */
+
+  .pass-verdict {
+    margin-top: 16px;
+    border-radius: 16px;
+    border: 1px solid;
+    padding: 16px 18px;
+  }
+
+  .pass-verdict--ok { background: var(--p-ok-bg); border-color: var(--p-ok-line); }
+  .pass-verdict--warn { background: var(--p-warn-bg); border-color: var(--p-warn-line); }
+  .pass-verdict--bad { background: var(--p-bad-bg); border-color: var(--p-bad-line); }
+
+  .pass-verdict__headline {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .pass-verdict--ok .pass-verdict__headline { color: var(--p-ok); }
+  .pass-verdict--warn .pass-verdict__headline { color: var(--p-warn); }
+  .pass-verdict--bad .pass-verdict__headline { color: var(--p-bad); }
+
+  .pass-verdict__detail {
+    margin: 7px 0 0;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--p-ink-soft);
+  }
+
+  .pass-verdict__checked {
+    margin: 10px 0 0;
+    font-size: 11px;
+    color: var(--p-ink-faint);
+  }
+
+  /* ── Panels, stats, rows ───────────────────────────────────────────── */
+
+  .pass-panel {
+    margin-top: 16px;
+    background: var(--p-surface);
+    border: 1px solid var(--p-line);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .pass-panel__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 16px 10px;
+  }
+
+  .pass-panel__title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .pass-panel__note {
+    margin: 0;
+    font-size: 11px;
+    color: var(--p-ink-faint);
+  }
+
+  .pass-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .pass-stat {
+    background: var(--p-surface);
+    border: 1px solid var(--p-line);
+    border-radius: 14px;
+    padding: 13px 14px;
+  }
+
+  .pass-stat__value {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+
+  .pass-stat__label {
+    margin: 4px 0 0;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--p-ink-faint);
+  }
+
+  .pass-stat--alert .pass-stat__value { color: var(--p-bad); }
+
+  .pass-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--p-line);
+  }
+
+  .pass-row__icon {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    border-radius: 9px;
+    background: var(--p-surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--p-ink-soft);
+  }
+
+  .pass-row__icon--ok { background: var(--p-ok-bg); color: var(--p-ok); }
+  .pass-row__icon--bad { background: var(--p-bad-bg); color: var(--p-bad); }
+
+  .pass-row__body { min-width: 0; flex: 1; }
+
+  .pass-row__title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pass-row__sub {
+    margin: 2px 0 0;
+    font-size: 11.5px;
+    color: var(--p-ink-faint);
+  }
+
+  .pass-row__aside {
+    text-align: right;
+    font-size: 11px;
+    color: var(--p-ink-faint);
+    white-space: nowrap;
+  }
+
+  .pass-daystamp {
+    padding: 11px 16px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--p-ink-faint);
+    border-top: 1px solid var(--p-line);
+  }
+
+  .pass-empty {
+    padding: 26px 18px 30px;
+    text-align: center;
+    color: var(--p-ink-faint);
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+
+  .pass-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: 1px solid;
+  }
+
+  .pass-chip--ok { color: var(--p-ok); background: var(--p-ok-bg); border-color: var(--p-ok-line); }
+  .pass-chip--warn { color: var(--p-warn); background: var(--p-warn-bg); border-color: var(--p-warn-line); }
+  .pass-chip--bad { color: var(--p-bad); background: var(--p-bad-bg); border-color: var(--p-bad-line); }
+
+  /* ── Forms, buttons ────────────────────────────────────────────────── */
+
+  .pass-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 13px 18px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s ease;
+  }
+
+  .pass-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .pass-btn:hover:not(:disabled) { filter: brightness(1.08); }
+
+  .pass-btn--primary {
+    background: linear-gradient(140deg, var(--p-brand) 0%, #2563a8 100%);
+    color: #ffffff;
+  }
+
+  .pass-btn--quiet {
+    background: var(--p-surface-2);
+    border-color: var(--p-line);
+    color: var(--p-ink-soft);
+  }
+
+  .pass-field { margin-bottom: 14px; }
+
+  .pass-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--p-ink-faint);
+  }
+
+  .pass-input {
+    width: 100%;
+    padding: 12px 13px;
+    background: var(--p-bg);
+    border: 1px solid var(--p-line);
+    border-radius: 11px;
+    color: var(--p-ink);
+    font: inherit;
+    font-size: 14px;
+  }
+
+  .pass-input::placeholder { color: #5b6a86; }
+
+  .pass-input:focus {
+    outline: none;
+    border-color: var(--p-brand);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+  }
+
+  .pass-input--mono {
+    font-family: var(--font-jetbrains), ui-monospace, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 74px;
+  }
+
+  .pass-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin-bottom: 14px;
+    padding: 11px 13px;
+    border-radius: 11px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    background: var(--p-bad-bg);
+    border: 1px solid var(--p-bad-line);
+    color: #fca5a5;
+  }
+
+  .pass-note {
+    margin: 14px 0 0;
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: var(--p-ink-faint);
+  }
+
+  /* ── Camera ────────────────────────────────────────────────────────── */
+
+  .pass-camera {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #000000;
+    border: 1px solid var(--p-line);
+    margin-bottom: 14px;
+  }
+
+  .pass-camera video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .pass-camera__reticle {
+    position: absolute;
+    inset: 16%;
+    border: 2px solid rgba(255, 255, 255, 0.75);
+    border-radius: 14px;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.42);
+  }
+
+  /* ── Bottom navigation ─────────────────────────────────────────────── */
+
+  .pass-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    display: flex;
+    max-width: 480px;
+    margin: 0 auto;
+    background: rgba(10, 16, 32, 0.93);
+    backdrop-filter: blur(14px);
+    border-top: 1px solid var(--p-line);
+  }
+
+  .pass-nav__link {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 10px 4px 12px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--p-ink-faint);
+    text-decoration: none;
+  }
+
+  .pass-nav__link--active { color: var(--p-ink); }
+
+  .pass-nav__link--active svg { color: var(--p-brand); }
+
+  /* ── Sign-in screen ────────────────────────────────────────────────── */
+
+  .pass-signin {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+
+  .pass-signin__card {
+    width: 100%;
+    max-width: 400px;
+    background: var(--p-surface);
+    border: 1px solid var(--p-line);
+    border-radius: 20px;
+    padding: 28px 24px;
+    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.5);
+  }
+
+  .pass-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 4px;
+    margin-bottom: 18px;
+    background: var(--p-bg);
+    border: 1px solid var(--p-line);
+    border-radius: 12px;
+  }
+
+  .pass-tab {
+    flex: 1;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 9px;
+    background: none;
+    color: var(--p-ink-faint);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .pass-tab--on { background: var(--p-surface-2); color: var(--p-ink); }
+}

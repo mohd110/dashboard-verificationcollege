@@ -66,6 +66,14 @@ export default async function LoginPage({
 
           <LoginForm next={next} notice={error ? NOTICES[error] : undefined} />
 
+          <a
+            href="/me/sign-in"
+            className="btn btn-secondary"
+            style={{ width: '100%', marginTop: 12, textDecoration: 'none' }}
+          >
+            I&rsquo;m a student — open my pass
+          </a>
+
           <div className="divider" />
           <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--gray-400)', margin: 0 }}>
             Govind Ballabh Pant University of Agriculture &amp; Technology

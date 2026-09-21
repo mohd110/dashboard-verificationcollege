@@ -1,7 +1,16 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/login'];
+/**
+ * Paths that do not need a staff session.
+ *
+ * /me is the student pass. Students have no Supabase login at all — they
+ * authenticate by presenting a card the university signed — so sending them to
+ * the staff sign-in screen would be sending them somewhere they can never get
+ * past. The pass guards itself: every screen under /me reads its own cookie
+ * and redirects to /me/sign-in without one.
+ */
+const PUBLIC_PATHS = ['/login', '/me'];
 
 /**
  * Seconds of remaining validity below which the token is refreshed.

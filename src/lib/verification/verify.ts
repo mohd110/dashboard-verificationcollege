@@ -8,7 +8,7 @@ import {
 } from '@/lib/crypto/verify';
 import type { CompactCredential } from '@/lib/credential/profile';
 import { QrPayloadError, readScannedPayload } from '@/lib/qr/payload';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 import type {
   CredentialStatus,
@@ -93,17 +93,25 @@ type HolderRow = {
  * on people or credentials, and should not. The function answers only for a
  * credential id the caller already has, and only within their own university.
  */
-async function resolveHolder(jti: string): Promise<HolderRow | null> {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc('resolve_credential_holder', { p_jti: jti });
+async function resolveHolder(jti: string, anonymous = false): Promise<HolderRow | null> {
+  const supabase = anonymous ? await createServiceClient() : await createClient();
 
-  if (!error) {
-    const rows = (data ?? []) as HolderRow[];
-    return rows[0] ?? null;
+  // resolve_credential_holder(), like published_issuer_keys(), scopes itself to
+  // current_university_id(). With no signed-in user that is null, so the
+  // function succeeds and finds nobody. An anonymous caller goes straight to
+  // the direct read below, which the service role may make.
+  if (!anonymous) {
+    const { data, error } = await supabase.rpc('resolve_credential_holder', { p_jti: jti });
+
+    if (!error) {
+      const rows = (data ?? []) as HolderRow[];
+      return rows[0] ?? null;
+    }
   }
 
-  // The function arrives with migration 0107. Until it is applied, a role that
-  // holds a read on credentials can still answer the same question directly.
+  // For a signed-in caller this is the path taken before migration 0107 is
+  // applied: a role that holds a read on credentials can answer the same
+  // question directly.
   const direct = await supabase
     .from('credentials')
     .select(
@@ -162,9 +170,9 @@ function toPerson(holder: HolderRow): VerificationPerson {
  * VALID with the failure named in the reason, because a network problem is not
  * evidence against a student.
  */
-async function lookupStatus(claims: CompactCredential): Promise<StatusReading> {
+async function lookupStatus(claims: CompactCredential, anonymous = false): Promise<StatusReading> {
   const checkedAt = new Date();
-  const holder = await resolveHolder(claims.jti);
+  const holder = await resolveHolder(claims.jti, anonymous);
 
   if (!holder) return { status: 'unknown', checkedAt, source: 'cache' };
 
@@ -178,7 +186,11 @@ async function lookupStatus(claims: CompactCredential): Promise<StatusReading> {
 }
 
 /** The real thing: a signed credential read from a QR code. */
-async function verifySignedCard(payload: string, issuerCode?: string): Promise<VerificationResult> {
+async function verifySignedCard(
+  payload: string,
+  issuerCode?: string,
+  anonymous = false,
+): Promise<VerificationResult> {
   const provider = 'ed25519-credential';
 
   let compactJws: string;
@@ -206,7 +218,7 @@ async function verifySignedCard(payload: string, issuerCode?: string): Promise<V
   // back UNVERIFIABLE, which records nothing, rather than as a rejection.
   let resolver;
   try {
-    resolver = await issuerKeyResolver();
+    resolver = await issuerKeyResolver(anonymous);
   } catch (error) {
     return unverifiable(
       error instanceof Error ? error.message : 'The signing keys are unavailable.',
@@ -217,7 +229,7 @@ async function verifySignedCard(payload: string, issuerCode?: string): Promise<V
   const result = await verifySignedCredential(compactJws, {
     resolver,
     expectedIssuer: issuerCode,
-    lookupStatus,
+    lookupStatus: (claims) => lookupStatus(claims, anonymous),
   });
 
   const mapped = STATE_MAP[result.state];
@@ -225,7 +237,7 @@ async function verifySignedCard(payload: string, issuerCode?: string): Promise<V
 
   // Claims exist only when the signature verified, so a name can never be
   // rendered from an unverified card.
-  const holder = result.claims ? await resolveHolder(result.claims.jti) : null;
+  const holder = result.claims ? await resolveHolder(result.claims.jti, anonymous) : null;
 
   return {
     verified: result.ok,
@@ -346,13 +358,22 @@ function looksLikeCredential(payload: string): boolean {
  * @param payload a QR string, or a student number typed by hand.
  * @param issuerCode refuse credentials from any other institution.
  */
+/**
+ * @param options.anonymous the caller holds no Supabase session, so the two
+ * reads this makes — the published keys and the credential's holder — go
+ * through the service role instead. Only the student pass does this: a student
+ * has no login by design, and the card they present is the proof. Every other
+ * caller is signed-in staff and leaves it alone.
+ */
 export async function verifyCredential(
   payload: string,
   issuerCode?: string,
+  options: { anonymous?: boolean } = {},
 ): Promise<VerificationResult> {
   const trimmed = payload.trim();
+  const anonymous = options.anonymous ?? false;
 
-  if (looksLikeCredential(trimmed)) return verifySignedCard(trimmed, issuerCode);
+  if (looksLikeCredential(trimmed)) return verifySignedCard(trimmed, issuerCode, anonymous);
 
   if (allowsPrintedNumbers()) return verifyPrintedNumber(trimmed);
 
